@@ -1,0 +1,9 @@
+secrets.py
+firmware/
+*.bin
+*.uf2
+__pycache__/
+*.tmp
+~$*.xlsx
+
+
