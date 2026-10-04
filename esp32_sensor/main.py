@@ -196,11 +196,18 @@ def main():
     try:
         while True:
             # Reconnect Wi-Fi if dropped
-            if not wlan.isconnected():
-                print("ESP32: Wi-Fi dropped, reconnecting...")
-                connect_wifi()
+            try:
+                if not wlan.isconnected():
+                    print("ESP32: Wi-Fi dropped, reconnecting...")
+                    wlan, ip = connect_wifi()
+            except Exception as e:
+                print("ESP32: Wi-Fi reconnection warning:", e)
 
-            run_scan_cycle(wlan)
+            try:
+                run_scan_cycle(wlan)
+            except Exception as e:
+                print("ESP32: Scan cycle warning:", e)
+
             time.sleep(config.SCAN_INTERVAL_SECONDS)
 
     except KeyboardInterrupt:
@@ -209,3 +216,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
