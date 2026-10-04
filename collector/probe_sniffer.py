@@ -36,70 +36,47 @@ def find_wlanhelper() -> Optional[str]:
     return None
 
 
-def get_alfa_interface_details() -> Optional[Dict[str, str]]:
+def get_alfa_interface_details() -> Optional[Dict[str, Any]]:
     """Detects ALFA RTL8811AU interface GUID, Scapy interface, and friendly name."""
     wlanhelper = find_wlanhelper()
-    if not wlanhelper:
-        return None
 
-    try:
-        res = subprocess.run([wlanhelper, "-i"], capture_output=True, text=True, timeout=5)
-        output = res.stdout + res.stderr
-    except Exception as e:
-        logger.warning(f"Failed to query WlanHelper interfaces: {e}")
-        return None
-
-    # Parse WlanHelper output to locate RTL8811AU / ALFA interface GUID
-    # Format:
-    # 1. 41298fcc-c671-4c00-9a70-811d002b70c5
-    #     Name: Wi-Fi 2
-    #     Description: Realtek RTL8811AU Wireless LAN 802.11ac USB 2.0 Network Adapter
-    guid = None
-    friendly_name = "Wi-Fi 2"
-
-    blocks = output.split("****************************************************")
-    if len(blocks) > 1:
-        target_section = blocks[1]
-        lines = target_section.splitlines()
-        current_guid = None
-        for line in lines:
-            guid_match = re.search(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", line)
-            if guid_match:
-                current_guid = guid_match.group(1)
-            if "RTL8811AU" in line or "Realtek" in line or "Alfa" in line:
-                guid = current_guid
-                break
-
-    if not guid:
-        # Fallback search
-        m = re.search(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", output)
-        if m:
-            guid = m.group(1)
-
-    if not guid:
-        return None
-
-    # Match with Scapy interface
+    # 1. First, search Scapy's interfaces directly (fast, no subprocess, no hanging!)
     try:
         import scapy.all as scapy
-        scapy_iface = None
-        guid_upper = guid.upper()
         for iface_obj in scapy.conf.ifaces.values():
-            if guid_upper in str(getattr(iface_obj, "name", "")).upper() or guid_upper in str(getattr(iface_obj, "network_name", "")).upper():
-                scapy_iface = iface_obj
-                break
-            if "RTL8811AU" in getattr(iface_obj, "description", ""):
-                scapy_iface = iface_obj
-                break
-    except Exception:
-        scapy_iface = None
+            desc = getattr(iface_obj, "description", "")
+            name = getattr(iface_obj, "name", "")
+            if "RTL8811AU" in desc or "ALFA" in desc.upper() or name == "Wi-Fi 2":
+                raw_guid = str(getattr(iface_obj, "guid", "")).strip("{}")
+                return {
+                    "guid": raw_guid,
+                    "friendly_name": name or "Wi-Fi 2",
+                    "scapy_iface": iface_obj,
+                    "wlanhelper": wlanhelper,
+                    "description": desc
+                }
+    except Exception as e:
+        logger.debug(f"Error querying Scapy ifaces: {e}")
 
-    return {
-        "guid": guid,
-        "friendly_name": friendly_name,
-        "scapy_iface": scapy_iface,
-        "wlanhelper": wlanhelper,
-    }
+    # 2. Fallback: query WlanHelper with piped input so it never blocks on stdin
+    if wlanhelper:
+        try:
+            res = subprocess.run([wlanhelper, "-i"], input="q\n", capture_output=True, text=True, timeout=2)
+            output = res.stdout + res.stderr
+            m = re.search(r"([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})", output)
+            if m:
+                guid = m.group(1)
+                return {
+                    "guid": guid,
+                    "friendly_name": "Wi-Fi 2",
+                    "scapy_iface": None,
+                    "wlanhelper": wlanhelper,
+                    "description": "Realtek RTL8811AU"
+                }
+        except Exception as e:
+            logger.debug(f"Fallback WlanHelper query error: {e}")
+
+    return None
 
 
 def get_interface_mode(guid: str) -> str:
@@ -142,7 +119,10 @@ class ChannelHopper(threading.Thread):
         while not self.stop_event.is_set():
             ch = self.channels[idx % len(self.channels)]
             self.current_channel = ch
-            set_interface_channel(self.guid, ch)
+            # Channel switching via Npcap only works in monitor mode
+            mode = get_interface_mode(self.guid)
+            if mode == "monitor":
+                set_interface_channel(self.guid, ch)
             idx += 1
             # Sleep in slices
             for _ in range(int(self.hop_interval * 10)):

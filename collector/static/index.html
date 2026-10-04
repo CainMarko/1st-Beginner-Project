@@ -381,16 +381,19 @@
   </div>
 
   <!-- Visual Sentry / RF-Triggered Camera Trap Panel -->
-  <div id="visual-sentry-section" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+  <div id="visual-sentry-section" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
       <div style="display: flex; align-items: center; gap: 8px;">
         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-rose); box-shadow: 0 0 8px var(--accent-rose);"></span>
         <span style="font-weight: 600; font-size: 14px; letter-spacing: -0.2px;">Visual Sentry & Camera Traps</span>
       </div>
-      <span id="sentry-count-badge" style="font-size: 11px; color: var(--text-muted); background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 999px;">0 captures</span>
+      <span id="sentry-count-badge" style="font-size: 11px; color: var(--accent-green); background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); padding: 3px 10px; border-radius: 999px; font-weight: 600;">Armed & Monitoring</span>
     </div>
     <div id="sentry-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;">
-      <!-- Captures populated dynamically -->
+      <div style="grid-column: 1 / -1; padding: 20px; text-align: center; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-color); border-radius: 8px;">
+        <div style="color: var(--text-primary); font-size: 13px; font-weight: 600; margin-bottom: 4px;">📷 Visual Sentry Armed & Ready</div>
+        <div style="color: var(--text-muted); font-size: 11px; max-width: 540px; margin: 0 auto; line-height: 1.5;">Automatic OV2640 camera trap triggers upon high-proximity signals (&ge; -65 dBm), tracking beacons, or new devices. Captured frames will appear here in real-time.</div>
+      </div>
     </div>
   </div>
 
@@ -744,15 +747,25 @@
         const res = await fetch("/api/captures");
         if (!res.ok) return;
         const data = await res.json();
-        const sec = document.getElementById("visual-sentry-section");
         const gallery = document.getElementById("sentry-gallery");
         const badge = document.getElementById("sentry-count-badge");
         if (!data.captures || data.captures.length === 0) {
-          sec.style.display = "none";
+          badge.textContent = "Armed & Monitoring";
+          badge.style.color = "var(--accent-green)";
+          badge.style.background = "rgba(16,185,129,0.1)";
+          badge.style.borderColor = "rgba(16,185,129,0.25)";
+          gallery.innerHTML = `
+            <div style="grid-column: 1 / -1; padding: 20px; text-align: center; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-color); border-radius: 8px;">
+              <div style="color: var(--text-primary); font-size: 13px; font-weight: 600; margin-bottom: 4px;">📷 Visual Sentry Armed & Ready</div>
+              <div style="color: var(--text-muted); font-size: 11px; max-width: 540px; margin: 0 auto; line-height: 1.5;">Automatic OV2640 camera trap triggers upon high-proximity signals (&ge; -65 dBm), tracking beacons, or new devices. Captured frames will appear here in real-time.</div>
+            </div>
+          `;
           return;
         }
-        sec.style.display = "block";
         badge.textContent = `${data.captures.length} capture${data.captures.length === 1 ? '' : 's'}`;
+        badge.style.color = "var(--accent-amber)";
+        badge.style.background = "rgba(245,158,11,0.1)";
+        badge.style.borderColor = "rgba(245,158,11,0.25)";
         gallery.innerHTML = data.captures.map(c => {
           const timeStr = new Date(c.timestamp * 1000).toLocaleTimeString();
           const rssiColor = getRssiColor(c.trigger_rssi);
