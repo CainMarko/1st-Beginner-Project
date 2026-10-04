@@ -59,9 +59,27 @@ class Device:
     manufacturer: Optional[str] = None
     last_ssid: Optional[str] = None
     is_connectable: Optional[bool] = None
+    last_channel: Optional[int] = None
 
     @classmethod
-    def from_row(cls, row: tuple) -> "Device":
+    def from_row(cls, row: Any) -> "Device":
+        # Handle dict, sqlite3.Row, or tuple
+        if hasattr(row, "keys"):
+            return cls(
+                address=row["address"],
+                radio=row["radio"],
+                manufacturer=row["manufacturer"],
+                signature=row["signature"],
+                confidence=row["confidence"],
+                first_seen=row["first_seen"],
+                last_seen=row["last_seen"],
+                sighting_count=row["sighting_count"],
+                best_rssi=row["best_rssi"],
+                last_rssi=row["last_rssi"],
+                last_ssid=row["last_ssid"],
+                is_connectable=bool(row["is_connectable"]) if row["is_connectable"] is not None else None,
+                last_channel=row["last_channel"] if "last_channel" in row.keys() else None,
+            )
         return cls(
             address=row[0],
             radio=row[1],
@@ -74,7 +92,8 @@ class Device:
             best_rssi=row[8],
             last_rssi=row[9],
             last_ssid=row[10],
-            is_connectable=bool(row[11]) if row[11] is not None else None,
+            is_connectable=bool(row[11]) if len(row) > 11 and row[11] is not None else None,
+            last_channel=row[12] if len(row) > 12 else None,
         )
 
     def to_dict(self) -> Dict[str, Any]:

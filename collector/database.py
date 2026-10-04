@@ -78,9 +78,18 @@ class Database:
                     best_rssi INTEGER NOT NULL,
                     last_rssi INTEGER NOT NULL,
                     last_ssid TEXT,
-                    is_connectable INTEGER
+                    is_connectable INTEGER,
+                    last_channel INTEGER
                 );
             """)
+
+            # Seamless migration for existing databases
+            cursor = self.conn.cursor()
+            cursor.execute("PRAGMA table_info(devices);")
+            cols = [row["name"] for row in cursor.fetchall()]
+            if "last_channel" not in cols:
+                cursor.execute("ALTER TABLE devices ADD COLUMN last_channel INTEGER;")
+            cursor.close()
 
             self.conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_devices_last_seen 
@@ -131,8 +140,8 @@ class Database:
                     INSERT INTO devices (
                         address, radio, manufacturer, signature, confidence,
                         first_seen, last_seen, sighting_count, best_rssi, last_rssi,
-                        last_ssid, is_connectable
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                        last_ssid, is_connectable, last_channel
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
                     ON CONFLICT(address) DO UPDATE SET
                         manufacturer = COALESCE(excluded.manufacturer, devices.manufacturer),
                         signature = CASE 
@@ -146,7 +155,8 @@ class Database:
                         best_rssi = MAX(devices.best_rssi, excluded.best_rssi),
                         last_rssi = excluded.last_rssi,
                         last_ssid = COALESCE(excluded.last_ssid, devices.last_ssid),
-                        is_connectable = COALESCE(excluded.is_connectable, devices.is_connectable);
+                        is_connectable = COALESCE(excluded.is_connectable, devices.is_connectable),
+                        last_channel = COALESCE(excluded.last_channel, devices.last_channel);
                 """, (
                     obs.address,
                     obs.radio,
@@ -159,6 +169,7 @@ class Database:
                     obs.rssi,
                     obs.ssid,
                     1 if obs.connectable is True else (0 if obs.connectable is False else None),
+                    obs.channel,
                 ))
 
             cursor.close()
@@ -206,8 +217,8 @@ class Database:
                         INSERT INTO devices (
                             address, radio, manufacturer, signature, confidence,
                             first_seen, last_seen, sighting_count, best_rssi, last_rssi,
-                            last_ssid, is_connectable
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                            last_ssid, is_connectable, last_channel
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
                         ON CONFLICT(address) DO UPDATE SET
                             manufacturer = COALESCE(excluded.manufacturer, devices.manufacturer),
                             signature = CASE 
@@ -221,7 +232,8 @@ class Database:
                             best_rssi = MAX(devices.best_rssi, excluded.best_rssi),
                             last_rssi = excluded.last_rssi,
                             last_ssid = COALESCE(excluded.last_ssid, devices.last_ssid),
-                            is_connectable = COALESCE(excluded.is_connectable, devices.is_connectable);
+                            is_connectable = COALESCE(excluded.is_connectable, devices.is_connectable),
+                            last_channel = COALESCE(excluded.last_channel, devices.last_channel);
                     """, (
                         obs.address,
                         obs.radio,
@@ -234,6 +246,7 @@ class Database:
                         obs.rssi,
                         obs.ssid,
                         1 if obs.connectable is True else (0 if obs.connectable is False else None),
+                        obs.channel,
                     ))
             cursor.close()
 
@@ -254,6 +267,12 @@ class Database:
 
         cursor.execute("SELECT COUNT(*) FROM devices WHERE radio = 'ble';")
         ble_devices = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM devices WHERE last_channel > 14;")
+        ghz5_devices = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM devices WHERE last_channel <= 14 OR radio = 'ble';")
+        ghz2_devices = cursor.fetchone()[0]
 
         cursor.execute("SELECT signature, COUNT(*) FROM devices GROUP BY signature;")
         signatures = {row[0]: row[1] for row in cursor.fetchall()}
@@ -277,6 +296,8 @@ class Database:
             "total_devices": total_devices,
             "wifi_devices": wifi_devices,
             "ble_devices": ble_devices,
+            "ghz2_devices": ghz2_devices,
+            "ghz5_devices": ghz5_devices,
             "signatures": signatures,
             "top_manufacturers": top_manufacturers,
             "latest_timestamp": latest_ts or 0,
@@ -287,6 +308,7 @@ class Database:
         filter_text: Optional[str] = None,
         radio: Optional[str] = None,
         signature: Optional[str] = None,
+        band: Optional[str] = None,
         sort_by: str = "last_seen",
         sort_order: str = "DESC",
         limit: int = 100,
@@ -308,6 +330,13 @@ class Database:
         if signature:
             query += " AND signature = ?"
             params.append(signature.strip())
+
+        if band:
+            b = band.lower().strip()
+            if b in ("2.4g", "2.4ghz", "2.4"):
+                query += " AND (last_channel <= 14 OR radio = 'ble')"
+            elif b in ("5g", "5ghz", "5"):
+                query += " AND last_channel > 14"
 
         valid_sort_cols = {
             "last_seen": "last_seen",

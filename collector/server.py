@@ -94,6 +94,7 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
             filter_text = query.get("q", [None])[0]
             radio = query.get("radio", [None])[0]
             signature = query.get("signature", [None])[0]
+            band = query.get("band", [None])[0]
             sort_by = query.get("sort", ["last_seen"])[0]
             sort_order = query.get("order", ["DESC"])[0]
             limit = int(query.get("limit", [100])[0])
@@ -103,6 +104,7 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
                 filter_text=filter_text,
                 radio=radio,
                 signature=signature,
+                band=band,
                 sort_by=sort_by,
                 sort_order=sort_order,
                 limit=limit,

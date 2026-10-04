@@ -223,6 +223,18 @@
     .radio-wifi { background: rgba(6, 182, 212, 0.15); color: var(--accent-wifi); border: 1px solid rgba(6, 182, 212, 0.3); }
     .radio-ble { background: rgba(99, 102, 241, 0.15); color: var(--accent-ble); border: 1px solid rgba(99, 102, 241, 0.3); }
 
+    .ch-pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      white-space: nowrap;
+    }
+    .ch-2g { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+    .ch-5g { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
+    .ch-ble { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
+
     .sig-pill {
       font-size: 11px;
       font-weight: 600;
@@ -348,7 +360,7 @@
     <div class="stat-card">
       <div class="label">Wi-Fi Networks</div>
       <div class="val" id="stat-wifi" style="color: var(--accent-wifi)">-</div>
-      <div class="sub">802.11 Access Points</div>
+      <div class="sub" id="stat-wifi-sub">802.11 Access Points</div>
     </div>
     <div class="stat-card">
       <div class="label">BLE Peripherals</div>
@@ -367,6 +379,11 @@
         <option value="">All Radios</option>
         <option value="wifi">Wi-Fi Only</option>
         <option value="ble">BLE Only</option>
+      </select>
+      <select id="band-filter" onchange="loadDevices()">
+        <option value="">All Bands</option>
+        <option value="2.4g">2.4 GHz Only</option>
+        <option value="5g">5 GHz Only</option>
       </select>
       <select id="signature-filter" onchange="loadDevices()">
         <option value="">All Signatures</option>
@@ -394,6 +411,7 @@
         <tr>
           <th>Address</th>
           <th>Radio</th>
+          <th>Channel / Band</th>
           <th>Device / Identification</th>
           <th>Archetype</th>
           <th>Signal (Best / Last)</th>
@@ -403,7 +421,7 @@
         </tr>
       </thead>
       <tbody id="devices-tbody">
-        <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">Loading RF devices...</td></tr>
+        <tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">Loading RF devices...</td></tr>
       </tbody>
     </table>
   </div>
@@ -422,6 +440,7 @@
             <tr>
               <th>Timestamp</th>
               <th>Node ID</th>
+              <th>Channel / Band</th>
               <th>RSSI</th>
               <th>SSID / Manufacturer</th>
               <th>Connectable</th>
@@ -473,6 +492,9 @@
         document.getElementById("stat-devices").textContent = data.total_devices.toLocaleString();
         document.getElementById("stat-wifi").textContent = data.wifi_devices.toLocaleString();
         document.getElementById("stat-ble").textContent = data.ble_devices.toLocaleString();
+        if (data.ghz5_devices !== undefined) {
+          document.getElementById("stat-wifi-sub").textContent = `${data.ghz5_devices} on 5GHz | ${data.ghz2_devices} on 2.4GHz`;
+        }
       } catch (err) {
         console.error("Failed to load stats:", err);
       }
@@ -481,12 +503,14 @@
     async function loadDevices() {
       const q = document.getElementById("search-input").value.trim();
       const radio = document.getElementById("radio-filter").value;
+      const band = document.getElementById("band-filter").value;
       const signature = document.getElementById("signature-filter").value;
       const [sortBy, sortOrder] = document.getElementById("sort-select").value.split(":");
 
       let url = `/api/devices?sort=${sortBy}&order=${sortOrder}&limit=100`;
       if (q) url += `&q=${encodeURIComponent(q)}`;
       if (radio) url += `&radio=${encodeURIComponent(radio)}`;
+      if (band) url += `&band=${encodeURIComponent(band)}`;
       if (signature) url += `&signature=${encodeURIComponent(signature)}`;
 
       try {
@@ -496,7 +520,7 @@
         const tbody = document.getElementById("devices-tbody");
 
         if (!data.devices || data.devices.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 32px; color: var(--text-muted)">No devices matching criteria.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 32px; color: var(--text-muted)">No devices matching criteria.</td></tr>`;
           return;
         }
 
@@ -510,10 +534,22 @@
           const identTitle = dev.last_ssid ? `<strong>${dev.last_ssid}</strong>` : `<span style="color:var(--text-muted)">Unnamed</span>`;
           const mfgSubtitle = dev.manufacturer ? `<div style="font-size:11px; color:var(--text-muted);">${dev.manufacturer}</div>` : '';
 
+          let chHtml = '<span style="color:var(--text-muted)">-</span>';
+          if (dev.radio === 'ble') {
+            chHtml = `<span class="ch-pill ch-ble">2.4G BLE</span>`;
+          } else if (dev.last_channel) {
+            if (dev.last_channel <= 14) {
+              chHtml = `<span class="ch-pill ch-2g">Ch ${dev.last_channel} (2.4G)</span>`;
+            } else {
+              chHtml = `<span class="ch-pill ch-5g">Ch ${dev.last_channel} (5G)</span>`;
+            }
+          }
+
           return `
             <tr>
               <td class="mac-cell">${dev.address}</td>
               <td><span class="radio-pill ${radioClass}">${dev.radio}</span></td>
+              <td>${chHtml}</td>
               <td>${identTitle}${mfgSubtitle}</td>
               <td>
                 <span class="sig-pill ${sigClass}">${dev.signature}</span>
@@ -593,10 +629,17 @@
         tbody.innerHTML = data.history.map(row => {
           const dateStr = row.timestamp ? new Date(row.timestamp * 1000).toLocaleTimeString() : 'N/A';
           const connStr = row.connectable === 1 ? '<span style="color:var(--accent-green)">Yes</span>' : (row.connectable === 0 ? '<span style="color:var(--text-muted)">No</span>' : '-');
+          let modalCh = '-';
+          if (row.radio === 'ble') {
+            modalCh = '<span class="ch-pill ch-ble">2.4G BLE</span>';
+          } else if (row.channel) {
+            modalCh = row.channel <= 14 ? `<span class="ch-pill ch-2g">Ch ${row.channel} (2.4G)</span>` : `<span class="ch-pill ch-5g">Ch ${row.channel} (5G)</span>`;
+          }
           return `
             <tr>
               <td>${dateStr}</td>
               <td>${row.node_id || 'unknown'}</td>
+              <td>${modalCh}</td>
               <td style="color:${getRssiColor(row.rssi)}">${row.rssi} dBm</td>
               <td>${row.ssid || row.manufacturer || '-'}</td>
               <td>${connStr}</td>
@@ -604,7 +647,7 @@
           `;
         }).join("");
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan='5' style='color:var(--accent-rose);'>Error: ${err.message}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan='6' style='color:var(--accent-rose);'>Error: ${err.message}</td></tr>`;
       }
     }
 

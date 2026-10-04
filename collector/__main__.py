@@ -20,6 +20,7 @@ from pathlib import Path
 from .database import Database
 from .ingest import SyncDaemon, sync_gateway
 from .server import run_server
+from .alfa_scanner import AlfaScannerDaemon, find_alfa_interface, scan_alfa
 
 DEFAULT_GATEWAY_URL = "http://192.168.1.152"
 DEFAULT_DB_PATH = "collector/fieldwatch.db"
@@ -52,11 +53,25 @@ def cmd_run(args):
 
     stop_event = threading.Event()
 
-    # 1. Start background SyncDaemon
+    # 1. Start background Gateway SyncDaemon
     daemon = SyncDaemon(args.gateway, db, interval_sec=args.interval, stop_event=stop_event)
     daemon.start()
 
-    # 2. Start HTTP server
+    # 2. Check and start ALFA Dual-Band Scanner
+    alfa_iface = None
+    alfa_daemon = None
+    if not getattr(args, "no_alfa", False):
+        alfa_iface = getattr(args, "alfa_interface", None) or find_alfa_interface()
+        if alfa_iface:
+            alfa_daemon = AlfaScannerDaemon(
+                db,
+                interface_name=alfa_iface,
+                interval_sec=getattr(args, "alfa_interval", 15),
+                stop_event=stop_event
+            )
+            alfa_daemon.start()
+
+    # 3. Start HTTP server
     server = run_server(db, gateway_url=args.gateway, host=args.host, port=args.port)
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
@@ -65,6 +80,10 @@ def cmd_run(args):
     print("  FIELDWATCH CENTRAL COLLECTOR RUNNING")
     print(f"  Web Dashboard:   http://localhost:{args.port}/")
     print(f"  Edge Gateway:    {args.gateway}")
+    if alfa_iface:
+        print(f"  ALFA Scanner:    {alfa_iface} (Active 2.4/5GHz Sweeper)")
+    else:
+        print("  ALFA Scanner:    Disabled (No secondary adapter detected)")
     print(f"  Database Path:   {args.db}")
     print(f"  Sync Interval:   {args.interval}s")
     print("  Press Ctrl+C to stop.")
@@ -88,6 +107,46 @@ def cmd_run(args):
         time.sleep(0.5)
 
 
+def cmd_alfa_scan(args):
+    db = Database(args.db)
+    db.init_schema()
+
+    iface = args.interface or find_alfa_interface()
+    if not iface:
+        print("[ERROR] No ALFA or secondary wireless interface found.", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Executing ALFA dual-band sweep on '{iface}'...")
+    t0 = time.time()
+    try:
+        observations = scan_alfa(iface)
+        elapsed = time.time() - t0
+        print(f"[OK] Discovered {len(observations)} BSSIDs across 2.4 GHz & 5 GHz in {elapsed:.2f}s:")
+        header = f"{'Address':<18} {'Channel':<12} {'RSSI':<6} {'Signature':<18} {'SSID / Network'}"
+        print(header)
+        print("-" * len(header))
+
+        for obs in observations:
+            ch = obs.get("channel")
+            if ch:
+                ch_str = f"Ch {ch} (2.4G)" if ch <= 14 else f"Ch {ch} (5G)"
+            else:
+                ch_str = "-"
+            rssi_str = f"{obs.get('rssi')}dB"
+            ssid = obs.get("ssid") or "<Hidden / Unnamed>"
+            print(f"{obs['address']:<18} {ch_str:<12} {rssi_str:<6} {obs['signature']:<18} {ssid}")
+
+        if not args.no_save:
+            inserted = db.insert_batch(observations)
+            print(f"\n[DB] Saved {inserted} new devices to {args.db} (Total: {db.get_stats()['total_devices']} devices).")
+
+    except Exception as e:
+        print(f"[ERROR] ALFA sweep failed: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        db.close()
+
+
 def cmd_stats(args):
     db = Database(args.db)
     db.init_schema()
@@ -99,6 +158,9 @@ def cmd_stats(args):
     print(f"Discovered Devices:  {stats['total_devices']:,}")
     print(f"  - Wi-Fi Networks:  {stats['wifi_devices']:,}")
     print(f"  - BLE Peripherals: {stats['ble_devices']:,}")
+    if "ghz5_devices" in stats:
+        print(f"  - 5 GHz Spectrum:  {stats['ghz5_devices']:,}")
+        print(f"  - 2.4 GHz Spectrum:{stats['ghz2_devices']:,}")
     print(f"Latest Sighting TS:  {stats['latest_timestamp']}")
 
     print("\nDevice Archetypes:")
@@ -126,6 +188,7 @@ def cmd_devices(args):
         filter_text=args.search,
         radio=args.radio,
         signature=args.signature,
+        band=args.band,
         sort_by=args.sort,
         sort_order=args.order,
         limit=args.limit
@@ -137,7 +200,7 @@ def cmd_devices(args):
         return
 
     print(f"\nDiscovered Devices ({len(devices)} displayed):")
-    header = f"{'Address':<18} {'Radio':<6} {'RSSI':<6} {'Count':<6} {'Conf':<6} {'Signature':<18} {'Manufacturer / Name'}"
+    header = f"{'Address':<18} {'Radio':<6} {'Channel':<12} {'RSSI':<6} {'Count':<6} {'Conf':<6} {'Signature':<18} {'Manufacturer / Name'}"
     print(header)
     print("-" * len(header))
 
@@ -145,7 +208,14 @@ def cmd_devices(args):
         ident = d.get("last_ssid") or d.get("manufacturer") or "Unknown"
         conf_pct = f"{int(d.get('confidence', 0) * 100)}%"
         rssi_str = f"{d.get('last_rssi')}dB"
-        print(f"{d['address']:<18} {d['radio']:<6} {rssi_str:<6} {d['sighting_count']:<6} {conf_pct:<6} {d['signature']:<18} {ident}")
+        ch = d.get("last_channel")
+        if d.get("radio") == "ble":
+            ch_str = "2.4G BLE"
+        elif ch:
+            ch_str = f"Ch {ch} (2.4G)" if ch <= 14 else f"Ch {ch} (5G)"
+        else:
+            ch_str = "-"
+        print(f"{d['address']:<18} {d['radio']:<6} {ch_str:<12} {rssi_str:<6} {d['sighting_count']:<6} {conf_pct:<6} {d['signature']:<18} {ident}")
     print()
 
 
@@ -197,8 +267,18 @@ def main():
     p_run.add_argument("--db", default=DEFAULT_DB_PATH, help="Database path")
     p_run.add_argument("--port", type=int, default=8080, help="Web port (default 8080)")
     p_run.add_argument("--host", default="0.0.0.0", help="Web host (default 0.0.0.0)")
-    p_run.add_argument("--interval", type=int, default=15, help="Sync interval seconds (default 15)")
+    p_run.add_argument("--interval", type=int, default=15, help="Gateway sync interval seconds (default 15)")
+    p_run.add_argument("--alfa-interface", help="ALFA / secondary Wi-Fi interface name (auto-detected by default)")
+    p_run.add_argument("--alfa-interval", type=int, default=15, help="ALFA scan interval seconds (default 15)")
+    p_run.add_argument("--no-alfa", action="store_true", help="Disable local ALFA adapter scanning")
     p_run.set_defaults(func=cmd_run)
+
+    # alfa-scan
+    p_alfa = subparsers.add_parser("alfa-scan", help="One-shot 2.4GHz & 5GHz sweep using ALFA adapter")
+    p_alfa.add_argument("--interface", help="Interface name (auto-detected if omitted)")
+    p_alfa.add_argument("--db", default=DEFAULT_DB_PATH, help="Database path to store discovered devices")
+    p_alfa.add_argument("--no-save", action="store_true", help="Do not save results to database")
+    p_alfa.set_defaults(func=cmd_alfa_scan)
 
     # stats
     p_stats = subparsers.add_parser("stats", help="Display summary stats from database")
@@ -209,6 +289,7 @@ def main():
     p_dev = subparsers.add_parser("devices", help="Query devices from database")
     p_dev.add_argument("--db", default=DEFAULT_DB_PATH, help="Database path")
     p_dev.add_argument("--radio", choices=["wifi", "ble"], help="Filter by radio")
+    p_dev.add_argument("--band", choices=["2.4g", "5g"], help="Filter by frequency band")
     p_dev.add_argument("--signature", help="Filter by signature archetype")
     p_dev.add_argument("--search", help="Search query")
     p_dev.add_argument("--sort", default="last_seen", help="Sort column")
