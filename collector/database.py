@@ -512,6 +512,15 @@ class Database:
         cursor.close()
         return results
 
+    def clear_captures(self) -> int:
+        """Deletes all recorded captures from the database."""
+        with self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM captures;")
+            deleted = cursor.rowcount
+            cursor.close()
+        return deleted
+
     def close(self):
         """Closes the underlying database connection."""
         if self.conn:

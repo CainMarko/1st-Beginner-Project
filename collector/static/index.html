@@ -387,7 +387,10 @@
         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-rose); box-shadow: 0 0 8px var(--accent-rose);"></span>
         <span style="font-weight: 600; font-size: 14px; letter-spacing: -0.2px;">Visual Sentry & Camera Traps</span>
       </div>
-      <span id="sentry-count-badge" style="font-size: 11px; color: var(--accent-green); background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); padding: 3px 10px; border-radius: 999px; font-weight: 600;">Armed & Monitoring</span>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button id="clear-captures-btn" onclick="clearCaptures()" style="background: rgba(244,63,94,0.1); color: var(--accent-rose); border: 1px solid rgba(244,63,94,0.25); padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s ease;">Clear Gallery</button>
+        <span id="sentry-count-badge" style="font-size: 11px; color: var(--accent-green); background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); padding: 3px 10px; border-radius: 999px; font-weight: 600;">Armed & Monitoring</span>
+      </div>
     </div>
     <div id="sentry-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;">
       <div style="grid-column: 1 / -1; padding: 20px; text-align: center; background: rgba(255,255,255,0.02); border: 1px dashed var(--border-color); border-radius: 8px;">
@@ -740,6 +743,18 @@
 
     function closeModal() {
       document.getElementById("history-modal").style.display = "none";
+    }
+
+    async function clearCaptures() {
+      if (!confirm("Are you sure you want to clear all camera captures from the gallery and disk?")) return;
+      try {
+        const res = await fetch("/api/captures/clear", { method: "POST" });
+        if (res.ok) {
+          loadCaptures();
+        }
+      } catch (err) {
+        console.error("Failed to clear captures:", err);
+      }
     }
 
     async function loadCaptures() {

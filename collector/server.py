@@ -61,6 +61,8 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_api_sync()
         elif parsed.path == "/api/camera/frame":
             self.handle_api_camera_frame(parsed)
+        elif parsed.path == "/api/captures/clear":
+            self.handle_api_captures_clear()
         else:
             self.send_error(404, "Not Found")
 
@@ -159,6 +161,23 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
             logger.error(f"Error fetching captures: {e}")
             self.send_json({"error": str(e)}, status=500)
 
+    def handle_api_captures_clear(self):
+        try:
+            deleted_db = self.db.clear_captures()
+            deleted_files = 0
+            if CAPTURES_DIR.exists():
+                for f in CAPTURES_DIR.glob("*.jpg"):
+                    try:
+                        f.unlink()
+                        deleted_files += 1
+                    except Exception as err:
+                        logger.warning(f"Failed to delete {f}: {err}")
+            logger.info(f"Visual Sentry: Cleared {deleted_db} DB records and {deleted_files} capture image files.")
+            self.send_json({"status": "ok", "deleted_records": deleted_db, "deleted_files": deleted_files})
+        except Exception as e:
+            logger.error(f"Error clearing captures: {e}")
+            self.send_json({"error": str(e)}, status=500)
+
     def handle_api_camera_frame(self, parsed):
         try:
             query = urllib.parse.parse_qs(parsed.query)
@@ -174,6 +193,14 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
             trigger_rssi_val = self.headers.get("X-Trigger-RSSI") or query.get("rssi", [None])[0]
             trigger_rssi = int(trigger_rssi_val) if trigger_rssi_val is not None else None
             trigger_reason = self.headers.get("X-Trigger-Reason") or query.get("reason", ["rf-trigger"])[0]
+
+            # Server-side guard: Ignore captures triggered by fixed Wi-Fi access points / stationary routers
+            if trigger_addr:
+                dev = self.db.get_device(trigger_addr)
+                if dev and dev.get("signature") == "router-ap":
+                    logger.info(f"Visual Sentry: Ignored capture triggered by fixed router AP {trigger_addr} ({dev.get('last_ssid')})")
+                    self.send_json({"status": "ignored", "reason": "fixed-router-ap"}, status=200)
+                    return
 
             now_ts = int(time.time())
             filename = f"capture_{now_ts}_{node_id}.jpg"

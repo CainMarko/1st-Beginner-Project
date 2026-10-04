@@ -123,7 +123,11 @@ def should_trigger(observation):
     addr = observation.get("address", "").lower()
     signature = observation.get("signature", "unknown")
 
-    # 1. Proximity spike trigger
+    # Ignore fixed Wi-Fi access points / stationary routers
+    if signature == "router-ap":
+        return False, ""
+
+    # 1. Proximity spike trigger (mobile devices, tracking tags, peripherals)
     if rssi >= TRIGGER_RSSI_THRESHOLD:
         return True, "proximity-spike"
 

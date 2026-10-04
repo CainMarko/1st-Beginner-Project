@@ -124,6 +124,20 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(latest["trigger_address"], "4a:88:fe:21:00:1a")
             self.assertEqual(latest["trigger_rssi"], -58)
 
+        # Clear captures via POST /api/captures/clear
+        clear_url = f"http://127.0.0.1:{self.port}/api/captures/clear"
+        req_clear = urllib.request.Request(clear_url, data=b"", method="POST")
+        with urllib.request.urlopen(req_clear, timeout=5) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data["status"], "ok")
+            self.assertGreaterEqual(data["deleted_records"], 1)
+
+        # Verify captures is now empty
+        with urllib.request.urlopen(get_url, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data["count"], 0)
+
     def test_get_api_device_history(self):
         url = f"http://127.0.0.1:{self.port}/api/device/a8:e6:e8:d0:6b:74/history"
         with urllib.request.urlopen(url, timeout=5) as resp:
