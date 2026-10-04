@@ -16,8 +16,10 @@ import secrets
 import observation
 import wifi_scanner
 import ble_scanner
+import signatures
 
 # In-memory store-and-forward buffer
+
 retry_queue = []
 
 # BLE Scanner instance
@@ -156,8 +158,9 @@ def run_scan_cycle(wlan):
         print("ESP32: BLE scan complete. Found", len(ble_observations), "devices.")
         observations.extend(ble_observations)
 
-    # Enqueue new observations (capped at MAX_QUEUE_SIZE)
+    # Enrich and enqueue new observations (capped at MAX_QUEUE_SIZE)
     for obs in observations:
+        signatures.enrich_observation(obs)
         retry_queue.append(obs)
         if len(retry_queue) > config.MAX_QUEUE_SIZE:
             retry_queue.pop(0)

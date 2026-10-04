@@ -21,6 +21,7 @@ def create_wifi_observation(
     timestamp=0,
     manufacturer="",
     signature="",
+    confidence=None,
     latitude=None,
     longitude=None
 ):
@@ -36,6 +37,7 @@ def create_wifi_observation(
         "ssid": str(ssid) if ssid is not None else "",
         "manufacturer": str(manufacturer) if manufacturer is not None else "",
         "signature": str(signature) if signature is not None else "",
+        "confidence": float(confidence) if confidence is not None else None,
         "latitude": latitude,
         "longitude": longitude
     }
@@ -49,6 +51,7 @@ def create_ble_observation(
     manufacturer="",
     timestamp=0,
     signature="",
+    confidence=None,
     connectable=None,
     latitude=None,
     longitude=None
@@ -65,9 +68,11 @@ def create_ble_observation(
         "ssid": str(name) if name is not None else "",
         "manufacturer": str(manufacturer) if manufacturer is not None else "",
         "signature": str(signature) if signature is not None else "",
+        "confidence": float(confidence) if confidence is not None else None,
         "connectable": bool(connectable) if connectable is not None else None,
         "latitude": latitude,
         "longitude": longitude
     }
+
 
 

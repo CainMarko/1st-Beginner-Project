@@ -153,6 +153,52 @@ class Esp32SensorTests(unittest.TestCase):
         self.assertFalse(by_addr["06:05:04:03:02:01"].get("connectable"))
         self.assertFalse(by_addr["aa:bb:cc:dd:ee:ff"].get("connectable"))
 
+    def test_create_wifi_observation_confidence(self):
+        obs = observation.create_wifi_observation(
+            node_id="esp32-001",
+            address="b8:f8:53:37:c7:08",
+            ssid="Fios-4ZxCR",
+            confidence=0.95
+        )
+        self.assertEqual(obs["confidence"], 0.95)
+
+    def test_create_ble_observation_confidence_default(self):
+        obs = observation.create_ble_observation(
+            node_id="esp32-001",
+            address="11:22:33:44:55:66"
+        )
+        self.assertIsNone(obs.get("confidence"))
+
+    def test_create_ble_observation_confidence_value(self):
+        obs = observation.create_ble_observation(
+            node_id="esp32-001",
+            address="11:22:33:44:55:66",
+            confidence=0.85
+        )
+        self.assertEqual(obs.get("confidence"), 0.85)
+
+    def test_pipeline_enrichment_integration(self):
+        import signatures
+        # 1. Parse raw Wi-Fi scan tuple
+        raw_wifi = (b"Fios-Test", b"\xb8\xf8\x53\x11\x22\x33", 6, -50, 3, False)
+        obs_wifi = wifi_scanner.parse_scan_tuple(raw_wifi, node_id="esp32-001", timestamp=100)
+        signatures.enrich_observation(obs_wifi)
+        self.assertEqual(obs_wifi["manufacturer"], "Actiontec")
+        self.assertEqual(obs_wifi["signature"], "router-ap")
+        self.assertEqual(obs_wifi["confidence"], 0.95)
+
+        # 2. Parse raw BLE scan event
+        raw_ble = [(b"\xa8\xe6\xe8\xd0\x6b\x74", -80, b"\x0a\x09WH-CH720N", 0)]
+        import ble_scanner
+        obs_ble_list = ble_scanner.process_raw_events(raw_ble, node_id="esp32-001", timestamp=100)
+        obs_ble = obs_ble_list[0]
+        signatures.enrich_observation(obs_ble)
+        self.assertEqual(obs_ble["manufacturer"], "Sony")
+        self.assertEqual(obs_ble["signature"], "audio-peripheral")
+        self.assertEqual(obs_ble["confidence"], 0.95)
+
+
+
 
 
 

@@ -6,35 +6,32 @@ obs = json.loads(res.read().decode())
 ble = [o for o in obs if o.get("radio") == "ble"]
 wifi = [o for o in obs if o.get("radio") == "wifi"]
 
-print("================================================================================")
-print("LIVE BLE OBSERVATIONS: CONNECTABLE vs BROADCASTING BREAKDOWN")
-print("================================================================================")
-print("Total observations in cache:", len(obs))
-print("Wi-Fi APs:", len(wifi), "| BLE Devices:", len(ble))
-print("--------------------------------------------------------------------------------")
-print(f"{'MAC ADDRESS':<20} | {'RSSI':<5} | {'STATUS':<15} | {'NAME':<12} | {'MFG':<6}")
-print("--------------------------------------------------------------------------------")
+print("=========================================================================================================")
+print("LIVE FIELDWATCH OBSERVATIONS WITH DEVICE SIGNATURES & CONFIDENCE")
+print("=========================================================================================================")
+print(f"Total Cached: {len(obs)} | Wi-Fi Access Points: {len(wifi)} | BLE Peripherals: {len(ble)}")
+print("---------------------------------------------------------------------------------------------------------")
+print(f"{'MAC ADDRESS':<19} | {'RADIO':<5} | {'RSSI':<5} | {'NAME / SSID':<18} | {'MANUFACTURER':<18} | {'SIGNATURE':<18} | {'CONF'}")
+print("---------------------------------------------------------------------------------------------------------")
 
-connectable_count = 0
-broadcast_count = 0
+for o in obs:
+    addr = o.get("address") or "—"
+    radio = o.get("radio") or "—"
+    rssi = str(o.get("rssi") if o.get("rssi") is not None else "—")
+    name = (o.get("ssid") or "—")[:18]
+    mfg = (o.get("manufacturer") or "unknown")[:18]
+    sig = (o.get("signature") or "unknown")[:18]
+    conf = f"{o.get('confidence'):.2f}" if o.get("confidence") is not None else "—"
 
-for b in ble:
-    is_conn = b.get("connectable")
-    if is_conn is True:
-        status = "CONNECTABLE"
-        connectable_count += 1
-    elif is_conn is False:
-        status = "BROADCAST ONLY"
-        broadcast_count += 1
-    else:
-        status = "UNKNOWN"
+    print(f"{addr:<19} | {radio:<5} | {rssi:<5} | {name:<18} | {mfg:<18} | {sig:<18} | {conf}")
 
-    name = b.get("ssid") or "—"
-    mfg = b.get("manufacturer") or "—"
-    rssi = str(b.get("rssi"))
+print("=========================================================================================================")
+# Archetype breakdown
+signatures_count = {}
+for o in obs:
+    s = o.get("signature") or "unclassified"
+    signatures_count[s] = signatures_count.get(s, 0) + 1
 
-    print(f"{b.get('address'):<20} | {rssi:<5} | {status:<15} | {name:<12} | {mfg:<6}")
-
-print("================================================================================")
-print(f"Summary: {connectable_count} Connectable Devices, {broadcast_count} Pure Broadcasters (Non-Connectable)")
-print("================================================================================")
+breakdown_str = ", ".join(f"{k}: {v}" for k, v in sorted(signatures_count.items()))
+print("Archetype Breakdown:", breakdown_str)
+print("=========================================================================================================")
