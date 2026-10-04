@@ -532,7 +532,8 @@
         document.getElementById("stat-obs-sub").textContent = "Sightings for matching devices";
         document.getElementById("label-obs").textContent = "Matching Sightings";
       } else {
-        document.getElementById("stat-obs").textContent = (stats.total_observations || 0).toLocaleString();
+        const totalObs = stats.total_observations !== undefined ? stats.total_observations : (stats.total_sightings || 0);
+        document.getElementById("stat-obs").textContent = totalObs.toLocaleString();
         document.getElementById("stat-obs-sub").textContent = "Historical time-series sightings";
         document.getElementById("label-obs").textContent = "Total Observations";
       }
@@ -572,6 +573,8 @@
           applyStatsToUI(data.stats, true);
         } else if (globalStats) {
           applyStatsToUI(globalStats, false);
+        } else if (data.stats) {
+          applyStatsToUI(data.stats, false);
         }
 
         const tbody = document.getElementById("devices-tbody");

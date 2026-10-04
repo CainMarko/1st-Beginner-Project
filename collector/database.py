@@ -356,7 +356,7 @@ class Database:
                 query += " AND last_channel > 14"
 
         if node_id:
-            query += " AND address IN (SELECT DISTINCT address FROM observations WHERE node_id = ?)"
+            query += " AND last_node_id = ?"
             params.append(node_id.strip())
 
         valid_sort_cols = {
@@ -421,7 +421,7 @@ class Database:
                 query += " AND last_channel > 14"
 
         if node_id:
-            query += " AND address IN (SELECT DISTINCT address FROM observations WHERE node_id = ?)"
+            query += " AND last_node_id = ?"
             params.append(node_id.strip())
 
         cursor = self.conn.cursor()
