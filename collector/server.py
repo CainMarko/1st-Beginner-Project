@@ -177,6 +177,7 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
 
             now_ts = int(time.time())
             filename = f"capture_{now_ts}_{node_id}.jpg"
+            CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
             file_path = CAPTURES_DIR / filename
             with open(file_path, "wb") as f:
                 f.write(image_data)
