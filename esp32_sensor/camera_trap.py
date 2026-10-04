@@ -6,6 +6,10 @@ triggers an OV2640 camera capture and uploads the JPEG to the Central Collector.
 """
 
 import time
+try:
+    import config
+except ImportError:
+    config = None
 
 # Pinout configuration for Freenove ESP32-Wrover (with OV2640 sensor)
 CAM_CONFIG_WROVER = {
@@ -31,7 +35,7 @@ CAM_CONFIG = {
 }
 
 # Trap trigger thresholds
-TRIGGER_RSSI_THRESHOLD = -65  # dBm (triggers when transmitter is in close proximity)
+TRIGGER_RSSI_THRESHOLD = getattr(config, "CAMERA_TRIGGER_RSSI", -75)  # dBm (triggers when transmitter is in extended proximity / street level)
 COOLDOWN_SECONDS = 10         # Minimum seconds between snapshots
 SUSPICIOUS_ARCHETYPES = {"tracking-beacon"}
 
