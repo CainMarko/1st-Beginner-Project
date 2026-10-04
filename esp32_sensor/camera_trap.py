@@ -7,7 +7,18 @@ triggers an OV2640 camera capture and uploads the JPEG to the Central Collector.
 
 import time
 
-# Pinout configuration for standard AI-Thinker ESP32-CAM (with OV2640 sensor)
+# Pinout configuration for Freenove ESP32-Wrover (with OV2640 sensor)
+CAM_CONFIG_WROVER = {
+    "d0": 4, "d1": 5, "d2": 18, "d3": 19,
+    "d4": 36, "d5": 39, "d6": 34, "d7": 35,
+    "format": 3,          # camera.JPEG
+    "framesize": 8,       # camera.FRAME_VGA (640x480)
+    "xclk_freq": 20000000,# 20 MHz
+    "href": 23, "vsync": 25, "reset": -1, "pwdn": -1,
+    "sioc": 27, "siod": 26, "xclk": 21, "pclk": 22,
+}
+
+# Pinout configuration for standard AI-Thinker ESP32-CAM (fallback)
 CAM_CONFIG = {
     "d0": 5, "d1": 18, "d2": 19, "d3": 21,
     "d4": 36, "d5": 39, "d6": 34, "d7": 35,
@@ -40,29 +51,51 @@ def init_camera():
         import camera
         if hasattr(camera, "Camera"):
             # Modern micropython-camera-API (OOP)
+            # Try Freenove ESP32-Wrover pinout first
             try:
-                _camera_inst = camera.Camera()
-            except Exception:
                 _camera_inst = camera.Camera(
-                    data_pins=[5, 18, 19, 21, 36, 39, 34, 35],
+                    data_pins=[4, 5, 18, 19, 36, 39, 34, 35],
                     pclk_pin=22,
                     vsync_pin=25,
                     href_pin=23,
                     sda_pin=26,
                     scl_pin=27,
-                    xclk_pin=0,
+                    xclk_pin=21,
                     xclk_freq=20000000,
-                    powerdown_pin=32,
+                    powerdown_pin=-1,
                     reset_pin=-1,
                     pixel_format=getattr(camera.PixelFormat, "JPEG", 3),
                     frame_size=getattr(camera.FrameSize, "VGA", 8)
                 )
+            except Exception:
+                # Fallback to AI-Thinker pinout
+                try:
+                    _camera_inst = camera.Camera(
+                        data_pins=[5, 18, 19, 21, 36, 39, 34, 35],
+                        pclk_pin=22,
+                        vsync_pin=25,
+                        href_pin=23,
+                        sda_pin=26,
+                        scl_pin=27,
+                        xclk_pin=0,
+                        xclk_freq=20000000,
+                        powerdown_pin=32,
+                        reset_pin=-1,
+                        pixel_format=getattr(camera.PixelFormat, "JPEG", 3),
+                        frame_size=getattr(camera.FrameSize, "VGA", 8)
+                    )
+                except Exception:
+                    _camera_inst = camera.Camera()
             _camera_initialized = True
-            print("[CAM] Modern Camera API initialized successfully (JPEG VGA)")
+            sensor_name = getattr(_camera_inst, "get_sensor_name", lambda: "OV2640")()
+            print("[CAM] Modern Camera API initialized successfully (Sensor: " + str(sensor_name) + ", VGA JPEG)")
             return True
         elif hasattr(camera, "init"):
-            # Legacy driver
-            camera.init(0, **CAM_CONFIG)
+            # Legacy driver: try Freenove Wrover first, then AI-Thinker
+            try:
+                camera.init(0, **CAM_CONFIG_WROVER)
+            except Exception:
+                camera.init(0, **CAM_CONFIG)
             _camera_inst = camera
             _camera_initialized = True
             print("[CAM] Legacy Camera driver initialized successfully")

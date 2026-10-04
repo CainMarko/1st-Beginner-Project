@@ -21,7 +21,7 @@ BLE_SCAN_INTERVAL_US = 100000  # 100ms interval
 BLE_SCAN_WINDOW_US = 100000    # 100ms window (100% duty cycle: window == interval)
 
 # Visual Sentry / RF-Triggered Camera Trap
-CAMERA_TRAP_ENABLED = False
+CAMERA_TRAP_ENABLED = True
 COLLECTOR_HOST = "192.168.1.156"
 COLLECTOR_PORT = 8080
 
