@@ -97,6 +97,33 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(data["count"], 0)
             self.assertEqual(data["stats"]["total_devices"], 0)
 
+    def test_post_and_get_camera_captures(self):
+        # Post a dummy image
+        url = f"http://127.0.0.1:{self.port}/api/camera/frame?node=esp32-001&addr=4a:88:fe:21:00:1a&rssi=-58&reason=high-proximity"
+        dummy_jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9"
+        req = urllib.request.Request(
+            url,
+            data=dummy_jpeg,
+            headers={"Content-Type": "image/jpeg", "X-Trigger-Reason": "rf-proximity"},
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            self.assertEqual(resp.status, 201)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data["status"], "ok")
+            self.assertIn("capture_", data["filename"])
+
+        # Query GET /api/captures
+        get_url = f"http://127.0.0.1:{self.port}/api/captures"
+        with urllib.request.urlopen(get_url, timeout=5) as resp:
+            self.assertEqual(resp.status, 200)
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertGreaterEqual(data["count"], 1)
+            latest = data["captures"][0]
+            self.assertEqual(latest["node_id"], "esp32-001")
+            self.assertEqual(latest["trigger_address"], "4a:88:fe:21:00:1a")
+            self.assertEqual(latest["trigger_rssi"], -58)
+
     def test_get_api_device_history(self):
         url = f"http://127.0.0.1:{self.port}/api/device/a8:e6:e8:d0:6b:74/history"
         with urllib.request.urlopen(url, timeout=5) as resp:

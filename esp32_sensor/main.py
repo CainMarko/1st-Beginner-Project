@@ -17,6 +17,10 @@ import observation
 import wifi_scanner
 import ble_scanner
 import signatures
+try:
+    import camera_trap
+except ImportError:
+    camera_trap = None
 
 # In-memory store-and-forward buffer
 
@@ -163,6 +167,13 @@ def run_scan_cycle(wlan):
     # Enrich and enqueue new observations (capped at MAX_QUEUE_SIZE)
     for obs in observations:
         signatures.enrich_observation(obs)
+        if getattr(config, "CAMERA_TRAP_ENABLED", False) and camera_trap:
+            camera_trap.trigger_and_upload(
+                obs,
+                collector_ip=getattr(config, "COLLECTOR_HOST", "192.168.1.156"),
+                collector_port=getattr(config, "COLLECTOR_PORT", 8080),
+                node_id=config.NODE_ID
+            )
         retry_queue.append(obs)
         if len(retry_queue) > config.MAX_QUEUE_SIZE:
             retry_queue.pop(0)

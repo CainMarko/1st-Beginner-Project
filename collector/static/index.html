@@ -380,6 +380,20 @@
     </div>
   </div>
 
+  <!-- Visual Sentry / RF-Triggered Camera Trap Panel -->
+  <div id="visual-sentry-section" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px 20px; margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-rose); box-shadow: 0 0 8px var(--accent-rose);"></span>
+        <span style="font-weight: 600; font-size: 14px; letter-spacing: -0.2px;">Visual Sentry & Camera Traps</span>
+      </div>
+      <span id="sentry-count-badge" style="font-size: 11px; color: var(--text-muted); background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 999px;">0 captures</span>
+    </div>
+    <div id="sentry-gallery" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;">
+      <!-- Captures populated dynamically -->
+    </div>
+  </div>
+
   <!-- Filters & Controls -->
   <div class="controls">
     <div class="search-box">
@@ -725,12 +739,52 @@
       document.getElementById("history-modal").style.display = "none";
     }
 
+    async function loadCaptures() {
+      try {
+        const res = await fetch("/api/captures");
+        if (!res.ok) return;
+        const data = await res.json();
+        const sec = document.getElementById("visual-sentry-section");
+        const gallery = document.getElementById("sentry-gallery");
+        const badge = document.getElementById("sentry-count-badge");
+        if (!data.captures || data.captures.length === 0) {
+          sec.style.display = "none";
+          return;
+        }
+        sec.style.display = "block";
+        badge.textContent = `${data.captures.length} capture${data.captures.length === 1 ? '' : 's'}`;
+        gallery.innerHTML = data.captures.map(c => {
+          const timeStr = new Date(c.timestamp * 1000).toLocaleTimeString();
+          const rssiColor = getRssiColor(c.trigger_rssi);
+          return `
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+              <a href="/captures/${c.filename}" target="_blank" style="display:block; position:relative; aspect-ratio: 4/3; background: #000;">
+                <img src="/captures/${c.filename}" alt="Trap Capture" style="width: 100%; height: 100%; object-fit: cover; display:block;">
+                <span style="position: absolute; bottom: 6px; right: 6px; background: rgba(0,0,0,0.7); font-size: 10px; padding: 2px 6px; border-radius: 4px; color: #fff;">${timeStr}</span>
+              </a>
+              <div style="padding: 8px 10px; font-size: 11px;">
+                <div style="font-family: 'SF Mono', monospace; font-size: 11px; color: var(--text-primary); font-weight:600;">${c.trigger_address || 'Manual / Cycle'}</div>
+                <div style="display: flex; justify-content: space-between; margin-top: 4px; color: var(--text-muted);">
+                  <span>Trigger: <strong style="color:var(--text-primary)">${c.trigger_reason}</strong></span>
+                  <span style="color:${rssiColor}; font-weight:600;">${c.trigger_rssi ? c.trigger_rssi + ' dBm' : ''}</span>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      } catch (err) {
+        console.error("Failed to load captures:", err);
+      }
+    }
+
     // Initialize & 5s polling loop
     loadStats();
     loadDevices();
+    loadCaptures();
     setInterval(() => {
       loadStats();
       loadDevices();
+      loadCaptures();
     }, 5000);
   </script>
 </body>

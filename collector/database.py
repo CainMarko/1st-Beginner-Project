@@ -112,6 +112,23 @@ class Database:
                 ON devices(signature);
             """)
 
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS captures (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp INTEGER NOT NULL,
+                    node_id TEXT NOT NULL,
+                    trigger_address TEXT,
+                    trigger_rssi INTEGER,
+                    trigger_reason TEXT,
+                    filename TEXT NOT NULL,
+                    file_size INTEGER NOT NULL
+                );
+            """)
+            self.conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_captures_timestamp 
+                ON captures(timestamp DESC);
+            """)
+
     def insert_observation(self, obs_input: Union[Dict[str, Any], Observation]) -> bool:
         """Inserts a single observation and updates the devices rollup table.
         
@@ -456,6 +473,42 @@ class Database:
         """, (address.lower().strip(), limit))
         rows = cursor.fetchall()
         results = [dict(row) for row in rows]
+        cursor.close()
+        return results
+
+    def insert_capture(
+        self,
+        node_id: str,
+        filename: str,
+        file_size: int,
+        timestamp: Optional[int] = None,
+        trigger_address: Optional[str] = None,
+        trigger_rssi: Optional[int] = None,
+        trigger_reason: Optional[str] = None,
+    ) -> int:
+        """Records an image capture event triggered by RF sensor."""
+        ts = timestamp if timestamp is not None else int(time.time())
+        with self.conn:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO captures (
+                    timestamp, node_id, trigger_address, trigger_rssi, trigger_reason, filename, file_size
+                ) VALUES (?, ?, ?, ?, ?, ?, ?);
+            """, (ts, node_id, trigger_address, trigger_rssi, trigger_reason, filename, file_size))
+            capture_id = cursor.lastrowid
+            cursor.close()
+            return capture_id
+
+    def get_latest_captures(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Retrieves latest image capture events."""
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT id, timestamp, node_id, trigger_address, trigger_rssi, trigger_reason, filename, file_size
+            FROM captures
+            ORDER BY timestamp DESC
+            LIMIT ?;
+        """, (limit,))
+        results = [dict(row) for row in cursor.fetchall()]
         cursor.close()
         return results
 

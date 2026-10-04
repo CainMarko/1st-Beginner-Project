@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import time
 import urllib.parse
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
@@ -14,6 +15,8 @@ from .ingest import sync_gateway
 logger = logging.getLogger("fieldwatch.server")
 
 STATIC_DIR = Path(__file__).parent / "static"
+CAPTURES_DIR = STATIC_DIR / "captures"
+CAPTURES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
@@ -42,6 +45,8 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
             self.handle_api_stats()
         elif path == "/api/devices":
             self.handle_api_devices(query)
+        elif path == "/api/captures":
+            self.handle_api_captures()
         elif path.startswith("/api/device/") and path.endswith("/history"):
             self.handle_api_device_history(path)
         elif path == "/" or path == "/index.html":
@@ -54,6 +59,8 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/sync":
             self.handle_api_sync()
+        elif parsed.path == "/api/camera/frame":
+            self.handle_api_camera_frame(parsed)
         else:
             self.send_error(404, "Not Found")
 
@@ -142,6 +149,57 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json({"error": "Invalid device path"}, status=400)
         except Exception as e:
             logger.error(f"Error fetching device history: {e}")
+            self.send_json({"error": str(e)}, status=500)
+
+    def handle_api_captures(self):
+        try:
+            captures = self.db.get_latest_captures(limit=20)
+            self.send_json({"captures": captures, "count": len(captures)})
+        except Exception as e:
+            logger.error(f"Error fetching captures: {e}")
+            self.send_json({"error": str(e)}, status=500)
+
+    def handle_api_camera_frame(self, parsed):
+        try:
+            query = urllib.parse.parse_qs(parsed.query)
+            content_length = int(self.headers.get("Content-Length", 0))
+            if content_length <= 0:
+                self.send_json({"error": "Empty body"}, status=400)
+                return
+
+            image_data = self.rfile.read(content_length)
+
+            node_id = self.headers.get("X-Node-ID") or query.get("node", ["esp32-001"])[0]
+            trigger_addr = self.headers.get("X-Trigger-Address") or query.get("addr", [None])[0]
+            trigger_rssi_val = self.headers.get("X-Trigger-RSSI") or query.get("rssi", [None])[0]
+            trigger_rssi = int(trigger_rssi_val) if trigger_rssi_val is not None else None
+            trigger_reason = self.headers.get("X-Trigger-Reason") or query.get("reason", ["rf-trigger"])[0]
+
+            now_ts = int(time.time())
+            filename = f"capture_{now_ts}_{node_id}.jpg"
+            file_path = CAPTURES_DIR / filename
+            with open(file_path, "wb") as f:
+                f.write(image_data)
+
+            capture_id = self.db.insert_capture(
+                node_id=node_id,
+                filename=filename,
+                file_size=len(image_data),
+                timestamp=now_ts,
+                trigger_address=trigger_addr,
+                trigger_rssi=trigger_rssi,
+                trigger_reason=trigger_reason
+            )
+
+            logger.info(f"Visual Sentry: Saved capture {filename} ({len(image_data)} bytes) triggered by {trigger_addr}")
+            self.send_json({
+                "status": "ok",
+                "id": capture_id,
+                "filename": filename,
+                "url": f"/captures/{filename}"
+            }, status=201)
+        except Exception as e:
+            logger.error(f"Error saving camera frame: {e}")
             self.send_json({"error": str(e)}, status=500)
 
     def handle_api_sync(self):

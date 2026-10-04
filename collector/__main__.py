@@ -253,6 +253,48 @@ def cmd_export(args):
     db.close()
 
 
+def cmd_sniff_probes(args):
+    db = Database(args.db)
+    db.init_schema()
+
+    from .probe_sniffer import get_alfa_interface_details, get_interface_mode, ProbeSnifferDaemon
+
+    details = get_alfa_interface_details()
+    if not details:
+        print("[ERROR] Could not locate ALFA RTL8811AU interface via Npcap.", file=sys.stderr)
+        sys.exit(1)
+
+    guid = details["guid"]
+    mode = get_interface_mode(guid)
+    print("=" * 60)
+    print("  FIELDWATCH 802.11 SMARTPHONE PROBE SNIFFER")
+    print(f"  Interface:       {details.get('friendly_name')} ({guid})")
+    print(f"  Current Mode:    {mode.upper()}")
+    print(f"  Target Radio:    802.11 Probe Requests (Subtype 4)")
+    print(f"  Database Path:   {args.db}")
+    print("=" * 60)
+
+    if mode != "monitor":
+        print("\n[NOTICE] Adapter is currently in MANAGED mode.")
+        print("To switch to 802.11 Monitor Mode on Windows, open an Administrator Command Prompt and run:")
+        print(f'   WlanHelper.exe "{details.get("friendly_name")}" mode monitor')
+        print(f'   (or run start_monitor_mode.bat as Administrator)\n')
+
+    stop_event = threading.Event()
+    sniffer = ProbeSnifferDaemon(db, interface_details=details, stop_event=stop_event)
+    sniffer.start()
+
+    print("[*] Sniffer running. Press Ctrl+C to stop...\n")
+    try:
+        while sniffer.is_alive():
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\n[*] Stopping sniffer...")
+        stop_event.set()
+        sniffer.join(timeout=3)
+        print(f"[*] Done. Captured {sniffer.probes_captured} probes from {len(sniffer.unique_macs)} unique devices.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Fieldwatch Central Laptop Collector")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -306,6 +348,11 @@ def main():
     p_exp.add_argument("--format", choices=["json", "csv"], default="json", help="Export format")
     p_exp.add_argument("--output", required=True, help="Output file path")
     p_exp.set_defaults(func=cmd_export)
+
+    # sniff-probes
+    p_sniff = subparsers.add_parser("sniff-probes", help="Sniff unassociated smartphone probe requests in monitor mode")
+    p_sniff.add_argument("--db", default=DEFAULT_DB_PATH, help="Database path")
+    p_sniff.set_defaults(func=cmd_sniff_probes)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
