@@ -5,5 +5,12 @@ firmware/
 __pycache__/
 *.tmp
 ~$*.xlsx
+*.xlsx
+*.db
+*.db-wal
+*.db-shm
+collector/*.json
+collector/*.csv
+
 
 

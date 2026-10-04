@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fieldwatch - Central RF Collector</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent-wifi: #06b6d4;
+      --accent-ble: #6366f1;
+      --accent-green: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #f43f5e;
+      --accent-purple: #a855f7;
+      --border-radius: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      padding: 24px;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--card-border);
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, var(--accent-wifi), var(--accent-ble));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 18px;
+      color: #fff;
+    }
+    .brand h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+    .brand p { font-size: 12px; color: var(--text-muted); }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .badge-status {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .badge-status.syncing {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--accent-amber);
+      border-color: rgba(245, 158, 11, 0.3);
+    }
+    .pulse {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    button {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background 0.15s ease;
+    }
+    button:hover { background: #1d4ed8; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* KPI Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 18px 20px;
+    }
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .stat-card .val {
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+    }
+    .stat-card .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Filters Bar */
+    .controls {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      padding: 14px 18px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .search-box {
+      flex: 1;
+      min-width: 240px;
+    }
+    input[type="text"], select {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      width: 100%;
+      outline: none;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: #3b82f6;
+    }
+    .filter-group {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    /* Device Table */
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--border-radius);
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 13px;
+    }
+    th {
+      background: #1e293b;
+      padding: 12px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(31, 41, 55, 0.7);
+      vertical-align: middle;
+    }
+    tr:hover { background: rgba(30, 41, 59, 0.4); }
+
+    .mac-cell {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-weight: 600;
+      color: #93c5fd;
+    }
+    .radio-pill {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      display: inline-block;
+    }
+    .radio-wifi { background: rgba(6, 182, 212, 0.15); color: var(--accent-wifi); border: 1px solid rgba(6, 182, 212, 0.3); }
+    .radio-ble { background: rgba(99, 102, 241, 0.15); color: var(--accent-ble); border: 1px solid rgba(99, 102, 241, 0.3); }
+
+    .sig-pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .sig-router-ap { background: rgba(6, 182, 212, 0.15); color: #38bdf8; }
+    .sig-audio-peripheral { background: rgba(168, 85, 247, 0.15); color: #c084fc; }
+    .sig-smart-home { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .sig-mobile-personal { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+    .sig-tracking-beacon { background: rgba(244, 63, 94, 0.15); color: #fb7185; }
+    .sig-iot-microcontroller { background: rgba(249, 115, 22, 0.15); color: #fb923c; }
+    .sig-unknown { background: rgba(100, 116, 139, 0.15); color: #94a3b8; }
+
+    .rssi-bar-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+    }
+    .rssi-bar {
+      width: 48px;
+      height: 6px;
+      background: #1f2937;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .rssi-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+    .btn-secondary {
+      background: #1e293b;
+      color: #cbd5e1;
+      padding: 4px 10px;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid var(--card-border);
+    }
+    .btn-secondary:hover { background: #334155; }
+
+    /* Modal / Drawer */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      max-width: 720px;
+      width: 100%;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .close-btn {
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 20px;
+      padding: 4px 8px;
+      cursor: pointer;
+    }
+    .close-btn:hover { color: #fff; background: transparent; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">FW</div>
+      <div>
+        <h1>Fieldwatch Central Collector</h1>
+        <p>Distributed RF Sensing & Threat Assessment Platform</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span class="badge badge-status" id="gateway-status">
+        <span class="pulse"></span> Connected
+      </span>
+      <button id="sync-btn" onclick="triggerSync()">
+        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+        Sync Now
+      </button>
+    </div>
+  </header>
+
+  <!-- KPI Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="label">Total Observations</div>
+      <div class="val" id="stat-obs">-</div>
+      <div class="sub">Historical time-series sightings</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Discovered Devices</div>
+      <div class="val" id="stat-devices">-</div>
+      <div class="sub">Unique RF transmitters</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Wi-Fi Networks</div>
+      <div class="val" id="stat-wifi" style="color: var(--accent-wifi)">-</div>
+      <div class="sub">802.11 Access Points</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">BLE Peripherals</div>
+      <div class="val" id="stat-ble" style="color: var(--accent-ble)">-</div>
+      <div class="sub">Bluetooth Low Energy beacons</div>
+    </div>
+  </div>
+
+  <!-- Filters & Controls -->
+  <div class="controls">
+    <div class="search-box">
+      <input type="text" id="search-input" placeholder="Search MAC address, SSID, or Manufacturer..." oninput="debouncedFilter()">
+    </div>
+    <div class="filter-group">
+      <select id="radio-filter" onchange="loadDevices()">
+        <option value="">All Radios</option>
+        <option value="wifi">Wi-Fi Only</option>
+        <option value="ble">BLE Only</option>
+      </select>
+      <select id="signature-filter" onchange="loadDevices()">
+        <option value="">All Signatures</option>
+        <option value="router-ap">Router / AP</option>
+        <option value="audio-peripheral">Audio / Headphones</option>
+        <option value="smart-home">Smart Home IoT</option>
+        <option value="mobile-personal">Mobile / Personal</option>
+        <option value="tracking-beacon">Tracking Beacon</option>
+        <option value="iot-microcontroller">Microcontroller</option>
+        <option value="unknown">Unknown</option>
+      </select>
+      <select id="sort-select" onchange="loadDevices()">
+        <option value="last_seen:DESC">Latest Sighting</option>
+        <option value="sighting_count:DESC">Most Sightings</option>
+        <option value="best_rssi:DESC">Strongest Signal</option>
+        <option value="first_seen:ASC">Oldest Discovered</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Devices Table -->
+  <div class="table-container">
+    <table>
+      <thead>
+        <tr>
+          <th>Address</th>
+          <th>Radio</th>
+          <th>Device / Identification</th>
+          <th>Archetype</th>
+          <th>Signal (Best / Last)</th>
+          <th>Sightings</th>
+          <th>Last Seen</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="devices-tbody">
+        <tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: 32px;">Loading RF devices...</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Sighting History Modal -->
+  <div class="modal-backdrop" id="history-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Device Observation History</h3>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="modal-meta" style="margin-bottom: 16px; font-size: 13px; color: var(--text-muted);"></div>
+        <table style="width: 100%;">
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Node ID</th>
+              <th>RSSI</th>
+              <th>SSID / Manufacturer</th>
+              <th>Connectable</th>
+            </tr>
+          </thead>
+          <tbody id="history-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let filterTimer = null;
+
+    function debouncedFilter() {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(loadDevices, 250);
+    }
+
+    function formatRelativeTime(epochSec) {
+      if (!epochSec || epochSec <= 0) return "Never";
+      const now = Math.floor(Date.now() / 1000);
+      const diff = now - epochSec;
+      if (diff < 5) return "Just now";
+      if (diff < 60) return `${diff}s ago`;
+      if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+      if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+      return `${Math.floor(diff / 86400)}d ago`;
+    }
+
+    function getRssiColor(rssi) {
+      if (rssi >= -60) return "var(--accent-green)";
+      if (rssi >= -80) return "var(--accent-amber)";
+      return "var(--accent-rose)";
+    }
+
+    function getRssiPercent(rssi) {
+      // Maps -100dBm (0%) to -30dBm (100%)
+      const clamped = Math.max(-100, Math.min(-30, rssi));
+      return Math.round(((clamped - (-100)) / 70) * 100);
+    }
+
+    async function loadStats() {
+      try {
+        const res = await fetch("/api/stats");
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("stat-obs").textContent = data.total_observations.toLocaleString();
+        document.getElementById("stat-devices").textContent = data.total_devices.toLocaleString();
+        document.getElementById("stat-wifi").textContent = data.wifi_devices.toLocaleString();
+        document.getElementById("stat-ble").textContent = data.ble_devices.toLocaleString();
+      } catch (err) {
+        console.error("Failed to load stats:", err);
+      }
+    }
+
+    async function loadDevices() {
+      const q = document.getElementById("search-input").value.trim();
+      const radio = document.getElementById("radio-filter").value;
+      const signature = document.getElementById("signature-filter").value;
+      const [sortBy, sortOrder] = document.getElementById("sort-select").value.split(":");
+
+      let url = `/api/devices?sort=${sortBy}&order=${sortOrder}&limit=100`;
+      if (q) url += `&q=${encodeURIComponent(q)}`;
+      if (radio) url += `&radio=${encodeURIComponent(radio)}`;
+      if (signature) url += `&signature=${encodeURIComponent(signature)}`;
+
+      try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Failed to load devices");
+        const data = await res.json();
+        const tbody = document.getElementById("devices-tbody");
+
+        if (!data.devices || data.devices.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 32px; color: var(--text-muted)">No devices matching criteria.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = data.devices.map(dev => {
+          const radioClass = dev.radio === "wifi" ? "radio-wifi" : "radio-ble";
+          const sigClass = `sig-${(dev.signature || 'unknown').replace(/[^a-z0-9_-]/gi, '')}`;
+          const bestColor = getRssiColor(dev.best_rssi);
+          const lastColor = getRssiColor(dev.last_rssi);
+          const bestPct = getRssiPercent(dev.best_rssi);
+
+          const identTitle = dev.last_ssid ? `<strong>${dev.last_ssid}</strong>` : `<span style="color:var(--text-muted)">Unnamed</span>`;
+          const mfgSubtitle = dev.manufacturer ? `<div style="font-size:11px; color:var(--text-muted);">${dev.manufacturer}</div>` : '';
+
+          return `
+            <tr>
+              <td class="mac-cell">${dev.address}</td>
+              <td><span class="radio-pill ${radioClass}">${dev.radio}</span></td>
+              <td>${identTitle}${mfgSubtitle}</td>
+              <td>
+                <span class="sig-pill ${sigClass}">${dev.signature}</span>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top:2px;">${Math.round((dev.confidence || 0) * 100)}% conf</div>
+              </td>
+              <td>
+                <div class="rssi-bar-container">
+                  <div class="rssi-bar"><div class="rssi-fill" style="width: ${bestPct}%; background: ${bestColor};"></div></div>
+                  <span style="color:${lastColor}">${dev.last_rssi} dBm</span>
+                </div>
+              </td>
+              <td style="font-weight: 600;">${dev.sighting_count.toLocaleString()}</td>
+              <td style="color: var(--text-muted);">${formatRelativeTime(dev.last_seen)}</td>
+              <td>
+                <button class="btn-secondary" onclick="viewHistory('${dev.address}')">History</button>
+              </td>
+            </tr>
+          `;
+        }).join("");
+      } catch (err) {
+        console.error("Error loading devices:", err);
+      }
+    }
+
+    async function triggerSync() {
+      const btn = document.getElementById("sync-btn");
+      const statusPill = document.getElementById("gateway-status");
+      btn.disabled = true;
+      statusPill.classList.add("syncing");
+      statusPill.innerHTML = `<span class="pulse"></span> Syncing...`;
+
+      try {
+        const res = await fetch("/api/sync", { method: "POST" });
+        const data = await res.json();
+        if (res.ok) {
+          statusPill.classList.remove("syncing");
+          statusPill.innerHTML = `<span class="pulse"></span> Synced (${data.inserted} new)`;
+          loadStats();
+          loadDevices();
+        } else {
+          statusPill.classList.remove("syncing");
+          statusPill.innerHTML = `<span class="pulse" style="background:var(--accent-rose)"></span> Offline`;
+        }
+      } catch (err) {
+        statusPill.classList.remove("syncing");
+        statusPill.innerHTML = `<span class="pulse" style="background:var(--accent-rose)"></span> Error`;
+      } finally {
+        btn.disabled = false;
+        setTimeout(() => {
+          statusPill.innerHTML = `<span class="pulse"></span> Connected`;
+        }, 3000);
+      }
+    }
+
+    async function viewHistory(address) {
+      const modal = document.getElementById("history-modal");
+      const title = document.getElementById("modal-title");
+      const meta = document.getElementById("modal-meta");
+      const tbody = document.getElementById("history-tbody");
+
+      title.textContent = `Observation History - ${address}`;
+      meta.textContent = "Loading sightings...";
+      tbody.innerHTML = "<tr><td colspan='5' style='text-align:center;'>Loading...</td></tr>";
+      modal.style.display = "flex";
+
+      try {
+        const res = await fetch(`/api/device/${encodeURIComponent(address)}/history`);
+        const data = await res.json();
+        const dev = data.device || {};
+        meta.innerHTML = `Radio: <strong>${dev.radio || 'N/A'}</strong> | Manufacturer: <strong>${dev.manufacturer || 'Unknown'}</strong> | Sighting Count: <strong>${dev.sighting_count || data.history.length}</strong>`;
+
+        if (!data.history || data.history.length === 0) {
+          tbody.innerHTML = "<tr><td colspan='5' style='text-align:center; color: var(--text-muted);'>No historical records found.</td></tr>";
+          return;
+        }
+
+        tbody.innerHTML = data.history.map(row => {
+          const dateStr = row.timestamp ? new Date(row.timestamp * 1000).toLocaleTimeString() : 'N/A';
+          const connStr = row.connectable === 1 ? '<span style="color:var(--accent-green)">Yes</span>' : (row.connectable === 0 ? '<span style="color:var(--text-muted)">No</span>' : '-');
+          return `
+            <tr>
+              <td>${dateStr}</td>
+              <td>${row.node_id || 'unknown'}</td>
+              <td style="color:${getRssiColor(row.rssi)}">${row.rssi} dBm</td>
+              <td>${row.ssid || row.manufacturer || '-'}</td>
+              <td>${connStr}</td>
+            </tr>
+          `;
+        }).join("");
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan='5' style='color:var(--accent-rose);'>Error: ${err.message}</td></tr>`;
+      }
+    }
+
+    function closeModal() {
+      document.getElementById("history-modal").style.display = "none";
+    }
+
+    // Initialize & 5s polling loop
+    loadStats();
+    loadDevices();
+    setInterval(() => {
+      loadStats();
+      loadDevices();
+    }, 5000);
+  </script>
+</body>
+</html>
