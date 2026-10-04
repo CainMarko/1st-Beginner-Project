@@ -17,4 +17,7 @@ WIFI_TIMEOUT_SECONDS = 20
 # BLE Scanning configuration
 BLE_SCAN_DURATION_MS = 5000
 BLE_SCAN_ENABLED = True
+BLE_SCAN_INTERVAL_US = 100000  # 100ms interval
+BLE_SCAN_WINDOW_US = 100000    # 100ms window (100% duty cycle: window == interval)
+
 

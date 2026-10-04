@@ -152,6 +152,8 @@ def run_scan_cycle(wlan):
         print("ESP32: Starting BLE scan (" + str(scan_secs) + "s)...")
         ble_observations = ble.scan(
             duration_ms=getattr(config, "BLE_SCAN_DURATION_MS", 5000),
+            interval_us=getattr(config, "BLE_SCAN_INTERVAL_US", 100000),
+            window_us=getattr(config, "BLE_SCAN_WINDOW_US", 100000),
             node_id=config.NODE_ID,
             timestamp=timestamp
         )

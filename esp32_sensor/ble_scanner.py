@@ -153,8 +153,16 @@ class BLEScanner:
             self._scan_done = True
 
 
-    def scan(self, duration_ms=5000, node_id="esp32-001", timestamp=0):
-        """Execute a BLE scan window and return a list of Schema v1 observations."""
+    def scan(self, duration_ms=5000, interval_us=100000, window_us=100000, node_id="esp32-001", timestamp=0):
+        """Execute a BLE scan window and return a list of Schema v1 observations.
+        
+        Args:
+            duration_ms: Total scan duration in milliseconds.
+            interval_us: Scan interval in microseconds (default 100ms).
+            window_us: Scan window in microseconds (default 100ms, 100% duty cycle).
+            node_id: Sensor node identifier string.
+            timestamp: Epoch timestamp.
+        """
         if bluetooth is None:
             return []
 
@@ -168,9 +176,10 @@ class BLEScanner:
         self._raw_queue = []
         self._scan_done = False
 
-        # interval 30ms, window 30ms (100% duty cycle), active=True (scan response)
+        # 100% duty cycle: interval == window (default 100ms / 100ms = 100,000us)
+        # Active scanning (active=True) requests SCAN_RSP to decode friendly device names & SIG IDs
         try:
-            self._ble.gap_scan(duration_ms, 30000, 30000, True)
+            self._ble.gap_scan(duration_ms, interval_us, window_us, True)
         except Exception as e:
             print("BLE scan error:", e)
             return []
