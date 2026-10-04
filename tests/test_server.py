@@ -74,9 +74,28 @@ class ServerApiTests(unittest.TestCase):
             self.assertEqual(resp.status, 200)
             data = json.loads(resp.read().decode("utf-8"))
             self.assertEqual(data["count"], 1)
+            self.assertEqual(data["total_matching"], 1)
+            self.assertIn("stats", data)
+            self.assertEqual(data["stats"]["ble_devices"], 1)
+            self.assertEqual(data["stats"]["wifi_devices"], 0)
             dev = data["devices"][0]
             self.assertEqual(dev["address"], "a8:e6:e8:d0:6b:74")
             self.assertEqual(dev["manufacturer"], "Sony")
+
+    def test_get_api_devices_node_filtering(self):
+        # Node match
+        url_match = f"http://127.0.0.1:{self.port}/api/devices?node=esp32-001"
+        with urllib.request.urlopen(url_match, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data["count"], 1)
+            self.assertEqual(data["stats"]["total_devices"], 1)
+
+        # Node non-match
+        url_none = f"http://127.0.0.1:{self.port}/api/devices?node=laptop-alfa-01"
+        with urllib.request.urlopen(url_none, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            self.assertEqual(data["count"], 0)
+            self.assertEqual(data["stats"]["total_devices"], 0)
 
     def test_get_api_device_history(self):
         url = f"http://127.0.0.1:{self.port}/api/device/a8:e6:e8:d0:6b:74/history"

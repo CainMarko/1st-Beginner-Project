@@ -95,6 +95,7 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
             radio = query.get("radio", [None])[0]
             signature = query.get("signature", [None])[0]
             band = query.get("band", [None])[0]
+            node_id = query.get("node", [None])[0]
             sort_by = query.get("sort", ["last_seen"])[0]
             sort_order = query.get("order", ["DESC"])[0]
             limit = int(query.get("limit", [100])[0])
@@ -105,12 +106,25 @@ class FieldwatchRequestHandler(SimpleHTTPRequestHandler):
                 radio=radio,
                 signature=signature,
                 band=band,
+                node_id=node_id,
                 sort_by=sort_by,
                 sort_order=sort_order,
                 limit=limit,
                 offset=offset,
             )
-            self.send_json({"count": len(devices), "devices": devices})
+            stats = self.db.get_filtered_stats(
+                filter_text=filter_text,
+                radio=radio,
+                signature=signature,
+                band=band,
+                node_id=node_id
+            )
+            self.send_json({
+                "count": len(devices),
+                "total_matching": stats["total_devices"],
+                "stats": stats,
+                "devices": devices
+            })
         except Exception as e:
             logger.error(f"Error fetching devices: {e}")
             self.send_json({"error": str(e)}, status=500)

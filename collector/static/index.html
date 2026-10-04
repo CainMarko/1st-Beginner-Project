@@ -235,6 +235,17 @@
     .ch-5g { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
     .ch-ble { background: rgba(99, 102, 241, 0.15); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.3); }
 
+    .node-pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      white-space: nowrap;
+    }
+    .node-esp { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .node-alfa { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
+
     .sig-pill {
       font-size: 11px;
       font-weight: 600;
@@ -348,14 +359,14 @@
   <!-- KPI Stats -->
   <div class="stats-grid">
     <div class="stat-card">
-      <div class="label">Total Observations</div>
+      <div class="label" id="label-obs">Total Observations</div>
       <div class="val" id="stat-obs">-</div>
-      <div class="sub">Historical time-series sightings</div>
+      <div class="sub" id="stat-obs-sub">Historical time-series sightings</div>
     </div>
     <div class="stat-card">
-      <div class="label">Discovered Devices</div>
+      <div class="label" id="label-devices">Discovered Devices</div>
       <div class="val" id="stat-devices">-</div>
-      <div class="sub">Unique RF transmitters</div>
+      <div class="sub" id="stat-devices-sub">Unique RF transmitters</div>
     </div>
     <div class="stat-card">
       <div class="label">Wi-Fi Networks</div>
@@ -365,7 +376,7 @@
     <div class="stat-card">
       <div class="label">BLE Peripherals</div>
       <div class="val" id="stat-ble" style="color: var(--accent-ble)">-</div>
-      <div class="sub">Bluetooth Low Energy beacons</div>
+      <div class="sub" id="stat-ble-sub">Bluetooth Low Energy beacons</div>
     </div>
   </div>
 
@@ -375,6 +386,11 @@
       <input type="text" id="search-input" placeholder="Search MAC address, SSID, or Manufacturer..." oninput="debouncedFilter()">
     </div>
     <div class="filter-group">
+      <select id="node-filter" onchange="loadDevices()">
+        <option value="">All Sensor Nodes</option>
+        <option value="esp32-001">ESP32 Sensor (esp32-001)</option>
+        <option value="laptop-alfa-01">ALFA Antenna (laptop-alfa-01)</option>
+      </select>
       <select id="radio-filter" onchange="loadDevices()">
         <option value="">All Radios</option>
         <option value="wifi">Wi-Fi Only</option>
@@ -412,6 +428,7 @@
           <th>Address</th>
           <th>Radio</th>
           <th>Channel / Band</th>
+          <th>Sensor Node</th>
           <th>Device / Identification</th>
           <th>Archetype</th>
           <th>Signal (Best / Last)</th>
@@ -421,7 +438,7 @@
         </tr>
       </thead>
       <tbody id="devices-tbody">
-        <tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: 32px;">Loading RF devices...</td></tr>
+        <tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: 32px;">Loading RF devices...</td></tr>
       </tbody>
     </table>
   </div>
@@ -483,32 +500,64 @@
       return Math.round(((clamped - (-100)) / 70) * 100);
     }
 
+    let globalStats = null;
+
     async function loadStats() {
       try {
         const res = await fetch("/api/stats");
         if (!res.ok) return;
-        const data = await res.json();
-        document.getElementById("stat-obs").textContent = data.total_observations.toLocaleString();
-        document.getElementById("stat-devices").textContent = data.total_devices.toLocaleString();
-        document.getElementById("stat-wifi").textContent = data.wifi_devices.toLocaleString();
-        document.getElementById("stat-ble").textContent = data.ble_devices.toLocaleString();
-        if (data.ghz5_devices !== undefined) {
-          document.getElementById("stat-wifi-sub").textContent = `${data.ghz5_devices} on 5GHz | ${data.ghz2_devices} on 2.4GHz`;
+        globalStats = await res.json();
+        // Only update UI if no filters are active
+        const q = document.getElementById("search-input").value.trim();
+        const node = document.getElementById("node-filter").value;
+        const radio = document.getElementById("radio-filter").value;
+        const band = document.getElementById("band-filter").value;
+        const signature = document.getElementById("signature-filter").value;
+        if (!q && !node && !radio && !band && !signature) {
+          applyStatsToUI(globalStats, false);
         }
       } catch (err) {
         console.error("Failed to load stats:", err);
       }
     }
 
+    function applyStatsToUI(stats, isFiltered) {
+      if (!stats) return;
+      document.getElementById("stat-devices").textContent = (stats.total_devices || 0).toLocaleString();
+      document.getElementById("stat-devices-sub").textContent = isFiltered ? "Matching active filters" : "Unique RF transmitters";
+      document.getElementById("label-devices").textContent = isFiltered ? "Matching Devices" : "Discovered Devices";
+
+      if (isFiltered) {
+        document.getElementById("stat-obs").textContent = (stats.total_sightings || 0).toLocaleString();
+        document.getElementById("stat-obs-sub").textContent = "Sightings for matching devices";
+        document.getElementById("label-obs").textContent = "Matching Sightings";
+      } else {
+        document.getElementById("stat-obs").textContent = (stats.total_observations || 0).toLocaleString();
+        document.getElementById("stat-obs-sub").textContent = "Historical time-series sightings";
+        document.getElementById("label-obs").textContent = "Total Observations";
+      }
+
+      document.getElementById("stat-wifi").textContent = (stats.wifi_devices || 0).toLocaleString();
+      document.getElementById("stat-ble").textContent = (stats.ble_devices || 0).toLocaleString();
+
+      const ghz5 = stats.ghz5_devices || 0;
+      const ghz2 = stats.ghz2_devices || 0;
+      document.getElementById("stat-wifi-sub").textContent = `${ghz5} on 5GHz | ${ghz2} on 2.4GHz`;
+    }
+
     async function loadDevices() {
       const q = document.getElementById("search-input").value.trim();
+      const node = document.getElementById("node-filter").value;
       const radio = document.getElementById("radio-filter").value;
       const band = document.getElementById("band-filter").value;
       const signature = document.getElementById("signature-filter").value;
       const [sortBy, sortOrder] = document.getElementById("sort-select").value.split(":");
 
+      const isFiltered = Boolean(q || node || radio || band || signature);
+
       let url = `/api/devices?sort=${sortBy}&order=${sortOrder}&limit=100`;
       if (q) url += `&q=${encodeURIComponent(q)}`;
+      if (node) url += `&node=${encodeURIComponent(node)}`;
       if (radio) url += `&radio=${encodeURIComponent(radio)}`;
       if (band) url += `&band=${encodeURIComponent(band)}`;
       if (signature) url += `&signature=${encodeURIComponent(signature)}`;
@@ -517,10 +566,18 @@
         const res = await fetch(url);
         if (!res.ok) throw new Error("Failed to load devices");
         const data = await res.json();
+
+        // Update top KPI stat cards based on filter!
+        if (isFiltered && data.stats) {
+          applyStatsToUI(data.stats, true);
+        } else if (globalStats) {
+          applyStatsToUI(globalStats, false);
+        }
+
         const tbody = document.getElementById("devices-tbody");
 
         if (!data.devices || data.devices.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding: 32px; color: var(--text-muted)">No devices matching criteria.</td></tr>`;
+          tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding: 32px; color: var(--text-muted)">No devices matching criteria.</td></tr>`;
           return;
         }
 
@@ -545,11 +602,21 @@
             }
           }
 
+          let nodeHtml = '<span style="color:var(--text-muted)">-</span>';
+          if (dev.last_node_id === 'esp32-001') {
+            nodeHtml = `<span class="node-pill node-esp">ESP32</span>`;
+          } else if (dev.last_node_id === 'laptop-alfa-01') {
+            nodeHtml = `<span class="node-pill node-alfa">ALFA Antenna</span>`;
+          } else if (dev.last_node_id) {
+            nodeHtml = `<span class="node-pill">${dev.last_node_id}</span>`;
+          }
+
           return `
             <tr>
               <td class="mac-cell">${dev.address}</td>
               <td><span class="radio-pill ${radioClass}">${dev.radio}</span></td>
               <td>${chHtml}</td>
+              <td>${nodeHtml}</td>
               <td>${identTitle}${mfgSubtitle}</td>
               <td>
                 <span class="sig-pill ${sigClass}">${dev.signature}</span>

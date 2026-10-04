@@ -79,7 +79,8 @@ class Database:
                     last_rssi INTEGER NOT NULL,
                     last_ssid TEXT,
                     is_connectable INTEGER,
-                    last_channel INTEGER
+                    last_channel INTEGER,
+                    last_node_id TEXT
                 );
             """)
 
@@ -89,6 +90,17 @@ class Database:
             cols = [row["name"] for row in cursor.fetchall()]
             if "last_channel" not in cols:
                 cursor.execute("ALTER TABLE devices ADD COLUMN last_channel INTEGER;")
+            if "last_node_id" not in cols:
+                cursor.execute("ALTER TABLE devices ADD COLUMN last_node_id TEXT;")
+            
+            # Backfill any null last_node_id from observations
+            cursor.execute("""
+                UPDATE devices SET last_node_id = (
+                    SELECT node_id FROM observations 
+                    WHERE observations.address = devices.address 
+                    ORDER BY timestamp DESC LIMIT 1
+                ) WHERE last_node_id IS NULL;
+            """)
             cursor.close()
 
             self.conn.execute("""
@@ -140,8 +152,8 @@ class Database:
                     INSERT INTO devices (
                         address, radio, manufacturer, signature, confidence,
                         first_seen, last_seen, sighting_count, best_rssi, last_rssi,
-                        last_ssid, is_connectable, last_channel
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                        last_ssid, is_connectable, last_channel, last_node_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(address) DO UPDATE SET
                         manufacturer = COALESCE(excluded.manufacturer, devices.manufacturer),
                         signature = CASE 
@@ -156,7 +168,8 @@ class Database:
                         last_rssi = excluded.last_rssi,
                         last_ssid = COALESCE(excluded.last_ssid, devices.last_ssid),
                         is_connectable = COALESCE(excluded.is_connectable, devices.is_connectable),
-                        last_channel = COALESCE(excluded.last_channel, devices.last_channel);
+                        last_channel = COALESCE(excluded.last_channel, devices.last_channel),
+                        last_node_id = COALESCE(excluded.last_node_id, devices.last_node_id);
                 """, (
                     obs.address,
                     obs.radio,
@@ -170,6 +183,7 @@ class Database:
                     obs.ssid,
                     1 if obs.connectable is True else (0 if obs.connectable is False else None),
                     obs.channel,
+                    obs.node_id,
                 ))
 
             cursor.close()
@@ -217,8 +231,8 @@ class Database:
                         INSERT INTO devices (
                             address, radio, manufacturer, signature, confidence,
                             first_seen, last_seen, sighting_count, best_rssi, last_rssi,
-                            last_ssid, is_connectable, last_channel
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                            last_ssid, is_connectable, last_channel, last_node_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(address) DO UPDATE SET
                             manufacturer = COALESCE(excluded.manufacturer, devices.manufacturer),
                             signature = CASE 
@@ -233,7 +247,8 @@ class Database:
                             last_rssi = excluded.last_rssi,
                             last_ssid = COALESCE(excluded.last_ssid, devices.last_ssid),
                             is_connectable = COALESCE(excluded.is_connectable, devices.is_connectable),
-                            last_channel = COALESCE(excluded.last_channel, devices.last_channel);
+                            last_channel = COALESCE(excluded.last_channel, devices.last_channel),
+                            last_node_id = COALESCE(excluded.last_node_id, devices.last_node_id);
                     """, (
                         obs.address,
                         obs.radio,
@@ -247,6 +262,7 @@ class Database:
                         obs.ssid,
                         1 if obs.connectable is True else (0 if obs.connectable is False else None),
                         obs.channel,
+                        obs.node_id,
                     ))
             cursor.close()
 
@@ -309,6 +325,7 @@ class Database:
         radio: Optional[str] = None,
         signature: Optional[str] = None,
         band: Optional[str] = None,
+        node_id: Optional[str] = None,
         sort_by: str = "last_seen",
         sort_order: str = "DESC",
         limit: int = 100,
@@ -338,6 +355,10 @@ class Database:
             elif b in ("5g", "5ghz", "5"):
                 query += " AND last_channel > 14"
 
+        if node_id:
+            query += " AND address IN (SELECT DISTINCT address FROM observations WHERE node_id = ?)"
+            params.append(node_id.strip())
+
         valid_sort_cols = {
             "last_seen": "last_seen",
             "first_seen": "first_seen",
@@ -357,6 +378,64 @@ class Database:
         results = [dict(row) for row in rows]
         cursor.close()
         return results
+
+    def get_filtered_stats(
+        self,
+        filter_text: Optional[str] = None,
+        radio: Optional[str] = None,
+        signature: Optional[str] = None,
+        band: Optional[str] = None,
+        node_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Calculates aggregated counts matching the specified filter criteria."""
+        query = """
+            SELECT 
+                COUNT(*) as total_devices,
+                COALESCE(SUM(sighting_count), 0) as total_sightings,
+                COALESCE(SUM(CASE WHEN radio = 'wifi' THEN 1 ELSE 0 END), 0) as wifi_devices,
+                COALESCE(SUM(CASE WHEN radio = 'ble' THEN 1 ELSE 0 END), 0) as ble_devices,
+                COALESCE(SUM(CASE WHEN last_channel > 14 THEN 1 ELSE 0 END), 0) as ghz5_devices,
+                COALESCE(SUM(CASE WHEN last_channel <= 14 OR radio = 'ble' THEN 1 ELSE 0 END), 0) as ghz2_devices
+            FROM devices WHERE 1=1
+        """
+        params: List[Any] = []
+
+        if filter_text:
+            query += " AND (address LIKE ? OR manufacturer LIKE ? OR last_ssid LIKE ?)"
+            pattern = f"%{filter_text.strip()}%"
+            params.extend([pattern, pattern, pattern])
+
+        if radio:
+            query += " AND radio = ?"
+            params.append(radio.lower().strip())
+
+        if signature:
+            query += " AND signature = ?"
+            params.append(signature.strip())
+
+        if band:
+            b = band.lower().strip()
+            if b in ("2.4g", "2.4ghz", "2.4"):
+                query += " AND (last_channel <= 14 OR radio = 'ble')"
+            elif b in ("5g", "5ghz", "5"):
+                query += " AND last_channel > 14"
+
+        if node_id:
+            query += " AND address IN (SELECT DISTINCT address FROM observations WHERE node_id = ?)"
+            params.append(node_id.strip())
+
+        cursor = self.conn.cursor()
+        cursor.execute(query, params)
+        row = cursor.fetchone()
+        cursor.close()
+        return dict(row) if row else {
+            "total_devices": 0,
+            "total_sightings": 0,
+            "wifi_devices": 0,
+            "ble_devices": 0,
+            "ghz5_devices": 0,
+            "ghz2_devices": 0,
+        }
 
     def get_device(self, address: str) -> Optional[Dict[str, Any]]:
         """Fetches a single device by address."""

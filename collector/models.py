@@ -60,6 +60,7 @@ class Device:
     last_ssid: Optional[str] = None
     is_connectable: Optional[bool] = None
     last_channel: Optional[int] = None
+    last_node_id: Optional[str] = None
 
     @classmethod
     def from_row(cls, row: Any) -> "Device":
@@ -79,6 +80,7 @@ class Device:
                 last_ssid=row["last_ssid"],
                 is_connectable=bool(row["is_connectable"]) if row["is_connectable"] is not None else None,
                 last_channel=row["last_channel"] if "last_channel" in row.keys() else None,
+                last_node_id=row["last_node_id"] if "last_node_id" in row.keys() else None,
             )
         return cls(
             address=row[0],
@@ -94,6 +96,7 @@ class Device:
             last_ssid=row[10],
             is_connectable=bool(row[11]) if len(row) > 11 and row[11] is not None else None,
             last_channel=row[12] if len(row) > 12 else None,
+            last_node_id=row[13] if len(row) > 13 else None,
         )
 
     def to_dict(self) -> Dict[str, Any]:

@@ -189,6 +189,7 @@ def cmd_devices(args):
         radio=args.radio,
         signature=args.signature,
         band=args.band,
+        node_id=args.node,
         sort_by=args.sort,
         sort_order=args.order,
         limit=args.limit
@@ -200,7 +201,7 @@ def cmd_devices(args):
         return
 
     print(f"\nDiscovered Devices ({len(devices)} displayed):")
-    header = f"{'Address':<18} {'Radio':<6} {'Channel':<12} {'RSSI':<6} {'Count':<6} {'Conf':<6} {'Signature':<18} {'Manufacturer / Name'}"
+    header = f"{'Address':<18} {'Radio':<6} {'Channel':<12} {'Node':<16} {'RSSI':<6} {'Count':<6} {'Conf':<6} {'Signature':<18} {'Manufacturer / Name'}"
     print(header)
     print("-" * len(header))
 
@@ -215,7 +216,8 @@ def cmd_devices(args):
             ch_str = f"Ch {ch} (2.4G)" if ch <= 14 else f"Ch {ch} (5G)"
         else:
             ch_str = "-"
-        print(f"{d['address']:<18} {d['radio']:<6} {ch_str:<12} {rssi_str:<6} {d['sighting_count']:<6} {conf_pct:<6} {d['signature']:<18} {ident}")
+        node_str = d.get("last_node_id") or "-"
+        print(f"{d['address']:<18} {d['radio']:<6} {ch_str:<12} {node_str:<16} {rssi_str:<6} {d['sighting_count']:<6} {conf_pct:<6} {d['signature']:<18} {ident}")
     print()
 
 
@@ -290,6 +292,7 @@ def main():
     p_dev.add_argument("--db", default=DEFAULT_DB_PATH, help="Database path")
     p_dev.add_argument("--radio", choices=["wifi", "ble"], help="Filter by radio")
     p_dev.add_argument("--band", choices=["2.4g", "5g"], help="Filter by frequency band")
+    p_dev.add_argument("--node", help="Filter by sensor node ID (e.g. esp32-001 or laptop-alfa-01)")
     p_dev.add_argument("--signature", help="Filter by signature archetype")
     p_dev.add_argument("--search", help="Search query")
     p_dev.add_argument("--sort", default="last_seen", help="Sort column")
