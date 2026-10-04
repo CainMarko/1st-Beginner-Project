@@ -25,27 +25,53 @@ COOLDOWN_SECONDS = 10         # Minimum seconds between snapshots
 SUSPICIOUS_ARCHETYPES = {"tracking-beacon"}
 
 _camera_initialized = False
-_camera_module = None
+_camera_inst = None
 _last_capture_time = 0
 _known_macs = set()
 
 
 def init_camera():
-    """Initializes the OV2640 camera driver if available on firmware."""
-    global _camera_initialized, _camera_module
-    if _camera_initialized:
+    """Initializes the camera driver (supports modern and legacy APIs)."""
+    global _camera_initialized, _camera_inst
+    if _camera_initialized and _camera_inst is not None:
         return True
 
     try:
         import camera
-        _camera_module = camera
-        # Initialize camera with AI-Thinker pinout
-        camera.init(0, **CAM_CONFIG)
-        _camera_initialized = True
-        print("[CAM] Camera trap initialized successfully (OV2640 VGA JPEG)")
-        return True
+        if hasattr(camera, "Camera"):
+            # Modern micropython-camera-API (OOP)
+            try:
+                _camera_inst = camera.Camera()
+            except Exception:
+                _camera_inst = camera.Camera(
+                    data_pins=[5, 18, 19, 21, 36, 39, 34, 35],
+                    pclk_pin=22,
+                    vsync_pin=25,
+                    href_pin=23,
+                    sda_pin=26,
+                    scl_pin=27,
+                    xclk_pin=0,
+                    xclk_freq=20000000,
+                    powerdown_pin=32,
+                    reset_pin=-1,
+                    pixel_format=getattr(camera.PixelFormat, "JPEG", 3),
+                    frame_size=getattr(camera.FrameSize, "VGA", 8)
+                )
+            _camera_initialized = True
+            print("[CAM] Modern Camera API initialized successfully (JPEG VGA)")
+            return True
+        elif hasattr(camera, "init"):
+            # Legacy driver
+            camera.init(0, **CAM_CONFIG)
+            _camera_inst = camera
+            _camera_initialized = True
+            print("[CAM] Legacy Camera driver initialized successfully")
+            return True
+        else:
+            print("[CAM] Unrecognized camera module interface")
+            return False
     except ImportError:
-        print("[CAM] 'camera' C-module not present in standard MicroPython firmware.")
+        print("[CAM] 'camera' C-module not present in MicroPython firmware.")
         return False
     except Exception as e:
         print("[CAM] Failed to initialize camera hardware:", e)
@@ -82,7 +108,7 @@ def should_trigger(observation):
 
 def trigger_and_upload(observation, collector_ip, collector_port=8080, node_id="esp32-001"):
     """Snaps a frame and uploads it via raw HTTP POST to collector."""
-    global _last_capture_time, _camera_module
+    global _last_capture_time, _camera_inst
 
     now = time.time()
     if (now - _last_capture_time) < COOLDOWN_SECONDS:
@@ -92,15 +118,16 @@ def trigger_and_upload(observation, collector_ip, collector_port=8080, node_id="
     if not trigger:
         return False, "no-trigger"
 
-    if not init_camera() or not _camera_module:
+    if not init_camera() or not _camera_inst:
         return False, "camera-unavailable"
 
     print("[CAM] TRAP TRIGGERED by", observation.get("address"), "Reason:", reason, "RSSI:", observation.get("rssi"))
 
     try:
-        img_bytes = _camera_module.capture()
-        if not img_bytes:
+        raw_frame = _camera_inst.capture()
+        if not raw_frame:
             return False, "empty-frame"
+        img_bytes = bytes(raw_frame)
     except Exception as e:
         print("[CAM] Capture failed:", e)
         return False, str(e)
